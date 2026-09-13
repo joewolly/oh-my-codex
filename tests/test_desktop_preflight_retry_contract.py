@@ -37,10 +37,17 @@ class DesktopPreflightRetryContractTests(unittest.TestCase):
             )
         self.assertIn("Do not reconstruct it from role data", prompt)
 
-    def test_malformed_transcription_can_recover_without_weakening_exact_gate(self) -> None:
+    def test_only_narrow_canary_helper_transcription_can_recover(self) -> None:
         prompt = self._prompt()
-        self.assertIn("A command that differs from the canonical retained command is NOT an authorized gate", prompt)
-        self.assertIn("NO specialist was spawned and NO source/probe write\noccurred after that malformed attempt", prompt)
+        self.assertIn("ONLY recoverable noncanonical form", prompt)
+        self.assertIn("identical to the canonical command in every token except the helper-path argument", prompt)
+        self.assertIn("one of the four exact canonical canary paths", prompt)
+        self.assertIn("interpreter, `-I -S`, Base64 launcher, and pinned SHA must be unchanged", prompt)
+        self.assertIn("Any other command difference is fatal", prompt)
+
+    def test_malformed_transcription_requires_zero_write_contamination(self) -> None:
+        prompt = self._prompt()
+        self.assertIn("NO specialist was spawned and NO source/probe write\noccurred during or after that malformed attempt", prompt)
         self.assertIn("copy the canonical retained command\nverbatim and execute it once for that dispatch", prompt)
         self.assertIn("If the canonical retained command itself exits nonzero, STOP", prompt)
         self.assertIn("do not retry it, do not delegate, do not write", prompt)

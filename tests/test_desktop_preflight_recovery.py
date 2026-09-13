@@ -1,4 +1,4 @@
-"""Execution regression for recoverable noncanonical Desktop preflight transcription."""
+"""Execution regressions for recoverable Desktop preflight transcription."""
 from __future__ import annotations
 
 import os
@@ -79,6 +79,27 @@ class DesktopPreflightRecoveryTests(unittest.TestCase):
         self.assertFalse(oracle_canary.exists())
         self.assertEqual((self.root / "target.py").read_bytes(), target_before)
         self.assertEqual(Path(self.canonical[0]), Path(sys.executable).expanduser().absolute())
+
+    def test_write_contamination_from_other_command_blocks_canonical_gate(self) -> None:
+        rogue = self.root / "rogue.txt"
+        writer = (
+            "import pathlib,sys;"
+            "p=pathlib.Path(sys.argv[1]).parent/'rogue.txt';"
+            "p.write_text('contaminated',encoding='utf-8');"
+            "raise SystemExit(1)"
+        )
+        malformed = [
+            self.canonical[0], "-I", "-S", "-c", writer,
+            self.canonical[-2], self.canonical[-1],
+        ]
+
+        attempt = self._run(malformed)
+        self.assertNotEqual(attempt.returncode, 0)
+        self.assertTrue(rogue.is_file())
+
+        retry = self._run(self.canonical)
+        self.assertNotEqual(retry.returncode, 0)
+        self.assertIn("unexpected fixture entry", retry.stdout + retry.stderr)
 
 
 if __name__ == "__main__":

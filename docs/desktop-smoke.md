@@ -70,10 +70,16 @@ alternate gate.
 A failure of the **canonical retained command** is fatal for that acceptance run: stop
 before the next specialist or write, preserve the command/output, and do not retry it.
 
-A command that differs from the canonical retained command is a transcription error,
-not the gate. If such a malformed command is accidentally executed and no specialist
-was spawned and no source/probe write occurred after it, preserve the malformed
-command/output and immediately execute the untouched canonical command once for that
+The only recoverable noncanonical form is the exact live transcription error this
+harness guards against: every token is identical to the canonical command except the
+helper-path argument was replaced by one of the four exact canonical canary paths. The
+interpreter, `-I -S`, Base64 launcher, and pinned SHA must be unchanged. Any other
+command difference is fatal to the acceptance run.
+
+For that narrow helper-path typo, recovery is permitted only if no specialist was
+spawned, the malformed command did not execute noncanonical helper/payload bytes, and
+no source/probe write occurred **during or after** the malformed attempt. Preserve the
+malformed command/output, then execute the untouched canonical command once for that
 dispatch. If the canonical command passes, the dispatch may proceed. An incidental path
 contained only in the malformed command is not probe-write evidence.
 

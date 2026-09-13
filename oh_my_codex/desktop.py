@@ -88,13 +88,21 @@ uses the preparation-time Python interpreter, contains `-I -S`, uses the exact h
 path above, and does not contain any `.omc-probes/` canary path. Then execute it unchanged.
 
 A command that differs from the canonical retained command is NOT an authorized gate.
-If such a malformed command is accidentally executed, retain its exact command/output
-as a transcription-error note. If NO specialist was spawned and NO source/probe write
-occurred after that malformed attempt, immediately copy the canonical retained command
-verbatim and execute it once for that dispatch. If the canonical command passes, the
-dispatch may continue and `probe_preflight` may remain `VERIFIED` based on the canonical
-gates. Do not put the malformed command's incidental path into `observed_probe_paths`
-unless a diagnostic probe-write was actually attempted there.
+The ONLY recoverable noncanonical form is a helper-path transcription error where the
+command is identical to the canonical command in every token except the helper-path
+argument was replaced by one of the four exact canonical canary paths listed below. The
+interpreter, `-I -S`, Base64 launcher, and pinned SHA must be unchanged. Any other
+command difference is fatal to this acceptance run; do not retry or substitute a gate.
+
+For that narrow helper-path typo, retain the exact malformed command/output as a
+transcription-error note. Recovery is permitted only if the malformed command did not
+execute noncanonical helper/payload bytes, NO specialist was spawned, and NO source/probe
+write occurred during or after that malformed attempt. If and only if all of those
+conditions hold, immediately copy the canonical retained command verbatim and execute it
+once for that dispatch. If the canonical command passes, the dispatch may continue and
+`probe_preflight` may remain `VERIFIED` based on the canonical gates. Do not put the
+malformed command's incidental path into `observed_probe_paths` unless a diagnostic
+probe-write was actually attempted there.
 
 If the canonical retained command itself exits nonzero, STOP exactly as required by the
 main gate: do not retry it, do not delegate, do not write, and do not use an alternate
