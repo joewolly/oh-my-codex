@@ -4,7 +4,7 @@ from __future__ import annotations
 import shlex
 
 from desktop_suite import DesktopVerificationTests as _DesktopVerificationTests
-from oh_my_codex.desktop import prepare_desktop_fixture
+from oh_my_codex.desktop import _asset_paths, prepare_desktop_fixture
 
 
 class DesktopVerificationTests(_DesktopVerificationTests):
@@ -12,6 +12,7 @@ class DesktopVerificationTests(_DesktopVerificationTests):
     # OMC asset. Hide them and replace them with the ownership-correct contract.
     test_config_change_invalidates_fingerprint = None
     test_standalone_missing_asset_at_preparation_still_fails = None
+    test_standalone_every_installed_asset_changed_or_missing_fails = None
 
     def test_benign_config_rewrite_does_not_invalidate_acceptance(self) -> None:
         self._complete()
@@ -51,6 +52,22 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         result = self._run_gate()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("conflicting OMC roles", result.stdout)
+
+    def test_managed_installed_assets_remain_byte_pinned(self) -> None:
+        for name, path in _asset_paths(self.codex, self.skills).items():
+            if not name.startswith("installed") or name == "installed-config":
+                continue
+            original = path.read_bytes()
+            for mutation in ("changed", "missing"):
+                if mutation == "changed":
+                    path.write_bytes(original + b"\n# changed\n")
+                else:
+                    path.unlink()
+                with self.subTest(asset=name, mutation=mutation):
+                    result = self._run_gate()
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(name, result.stdout)
+                path.write_bytes(original)
 
 
 del _DesktopVerificationTests
