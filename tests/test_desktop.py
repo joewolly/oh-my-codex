@@ -4,6 +4,7 @@ from __future__ import annotations
 import shlex
 
 from desktop_suite import DesktopVerificationTests as _DesktopVerificationTests
+from oh_my_codex import desktop_core
 from oh_my_codex.desktop import _asset_paths, prepare_desktop_fixture
 
 
@@ -27,6 +28,15 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         (self.codex / "config.toml").unlink()
         prepared = prepare_desktop_fixture(
             self.root.parent / "missing config fixture",
+            codex_home=self.codex,
+            skills_home=self.skills,
+        )
+        result = self._run_gate(shlex.split(prepared["preflight_command"]))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_direct_core_prepared_fixture_preflight_is_compatible(self) -> None:
+        prepared = desktop_core.prepare_desktop_fixture(
+            self.root.parent / "direct core fixture",
             codex_home=self.codex,
             skills_home=self.skills,
         )
