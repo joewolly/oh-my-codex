@@ -58,7 +58,7 @@ try {
     )
     & $PowerShellExe -NoProfile -NonInteractive -File $CanonicalScript
     Assert-True ($LASTEXITCODE -eq 0) 'exact retained command must execute through PowerShell unchanged'
-    Assert-True ($canonical[0] -match [regex]::Escape($env:LOCALAPPDATA)) 'retained executable path must exercise spaces'
+    Assert-True ($canonical[0] -match [regex]::Escape($env:LOCALAPPDATA.Replace('\', '/'))) 'retained executable path must exercise spaces'
 
     $global:OmcWindowsCiClipboardText = ''
     $second = & $Wrapper `
