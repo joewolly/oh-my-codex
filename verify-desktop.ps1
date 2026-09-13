@@ -93,6 +93,62 @@ function Require-Value([string]$Value, [string]$Prompt) {
     return $Value.Trim()
 }
 
+function Get-InstalledIdentity {
+    return Invoke-ToolJson -Arguments @(
+        '-c',
+        'import json; from oh_my_codex import __version__; from oh_my_codex.desktop import _asset_fingerprints; print(json.dumps({''package_version'': __version__, ''asset_fingerprints'': _asset_fingerprints()}))'
+    )
+}
+
+function Test-AssetFingerprintsEqual([object]$Left, [object]$Right) {
+    $leftProperties = @($Left.PSObject.Properties)
+    $rightProperties = @($Right.PSObject.Properties)
+    if ($leftProperties.Count -ne $rightProperties.Count) {
+        return $false
+    }
+    foreach ($property in $leftProperties) {
+        $other = $Right.PSObject.Properties[$property.Name]
+        if ($null -eq $other -or [string]$property.Value -cne [string]$other.Value) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Start-FreshRun {
+    $prepared = Invoke-ToolJson -Arguments @('-m', 'oh_my_codex', 'verify-desktop', '--prepare', '--json')
+    if ($prepared.overall -ne 'PASS' -or $prepared.status -ne 'prepared') {
+        throw 'Desktop fixture preparation did not return overall=PASS and status=prepared.'
+    }
+    $metadata = Get-Content -LiteralPath (Join-Path $prepared.fixture '.omc-desktop.json') -Raw | ConvertFrom-Json
+    $freshState = [ordered]@{
+        schema = $StateSchema
+        stage = 'awaiting-control'
+        run_id = [string]$prepared.run_id
+        fixture = [string]$prepared.fixture
+        prepared_at = [string]$prepared.prepared_at
+        package_version = [string]$metadata.package_version
+        baseline_fingerprint = [string]$prepared.baseline_fingerprint
+        asset_fingerprints = $metadata.asset_fingerprints
+        control_prompt = [string]$prepared.control_prompt
+        control_evidence = [string]$prepared.control_evidence
+        desktop_prompt = [string]$prepared.prompt
+        desktop_evidence = [string]$prepared.evidence
+        control_thread_id = ''
+        desktop_version = ''
+        runtime_version = ''
+    }
+    Write-State $freshState
+    Copy-Prompt $freshState.control_prompt
+    Write-Host 'STEP 1 - CONTROL THREAD'
+    Write-Host '- Fully quit/relaunch Codex Desktop if required.'
+    Write-Host '- Start a NEW thread.'
+    Write-Host '- Do NOT activate $oh-my-codex.'
+    Write-Host '- Paste the control prompt now on your clipboard.'
+    Write-Host "Run: $($freshState.run_id)"
+    Write-Host 'When the control thread is complete, run .\verify-desktop.ps1 again.'
+}
+
 function Read-PendingState {
     try {
         $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
@@ -162,41 +218,19 @@ if (-not (Test-Path -LiteralPath $ToolingPython -PathType Leaf)) {
 }
 
 if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) {
-    $prepared = Invoke-ToolJson -Arguments @('-m', 'oh_my_codex', 'verify-desktop', '--prepare', '--json')
-    if ($prepared.overall -ne 'PASS' -or $prepared.status -ne 'prepared') {
-        throw 'Desktop fixture preparation did not return overall=PASS and status=prepared.'
-    }
-    $metadata = Get-Content -LiteralPath (Join-Path $prepared.fixture '.omc-desktop.json') -Raw | ConvertFrom-Json
-    $state = [ordered]@{
-        schema = $StateSchema
-        stage = 'awaiting-control'
-        run_id = [string]$prepared.run_id
-        fixture = [string]$prepared.fixture
-        prepared_at = [string]$prepared.prepared_at
-        package_version = [string]$metadata.package_version
-        baseline_fingerprint = [string]$prepared.baseline_fingerprint
-        asset_fingerprints = $metadata.asset_fingerprints
-        control_prompt = [string]$prepared.control_prompt
-        control_evidence = [string]$prepared.control_evidence
-        desktop_prompt = [string]$prepared.prompt
-        desktop_evidence = [string]$prepared.evidence
-        control_thread_id = ''
-        desktop_version = ''
-        runtime_version = ''
-    }
-    Write-State $state
-    Copy-Prompt $state.control_prompt
-    Write-Host 'STEP 1 - CONTROL THREAD'
-    Write-Host '- Fully quit/relaunch Codex Desktop if required.'
-    Write-Host '- Start a NEW thread.'
-    Write-Host '- Do NOT activate $oh-my-codex.'
-    Write-Host '- Paste the control prompt now on your clipboard.'
-    Write-Host "Run: $($state.run_id)"
-    Write-Host 'When the control thread is complete, run .\verify-desktop.ps1 again.'
+    Start-FreshRun
     return
 }
 
 $state = Read-PendingState
+$installed = Get-InstalledIdentity
+if ($installed.package_version -ne $state.package_version -or
+    -not (Test-AssetFingerprintsEqual $installed.asset_fingerprints $state.asset_fingerprints)) {
+    Archive-State 'installed-build-changed'
+    Write-Host 'The installed Oh-My-Codex build changed. The stale wrapper state was archived and its forensic fixture was preserved.'
+    Start-FreshRun
+    return
+}
 if ($state.stage -eq 'awaiting-control') {
     # No activated work is authorized yet, so the canonical preflight must still
     # validate the untouched fixture and current installed managed assets.

@@ -140,7 +140,9 @@ For Windows Desktop build verification, the normal operator flow is:
 
 No venv path, pip cache setting, Base64 gate, fixture/evidence path, shell quoting, or
 evaluator command needs to be assembled manually. `-Reset` safely archives only wrapper
-state and preserves the prepared forensic fixture.
+state and preserves the prepared forensic fixture. After OMC is upgraded or reinstalled,
+the next wrapper run automatically archives an incompatible pending state, preserves its
+forensic fixture, prepares a fresh run, copies the new control prompt, and prints STEP 1.
 
 Optional bootstrap overrides are available for isolated/test installations:
 
