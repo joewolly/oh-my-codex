@@ -46,6 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
     desktop_mode = desktop_parser.add_mutually_exclusive_group(required=True)
     desktop_mode.add_argument("--prepare", action="store_true", help="Create a disposable fixture, prompt, and evidence template")
     desktop_mode.add_argument("--evaluate", metavar="EVIDENCE", type=Path, help="Evaluate operator-entered Desktop evidence JSON")
+    desktop_mode.add_argument("--check-probes", type=Path, help="Validate fixture targets before delegation; no probes executed")
+    desktop_parser.add_argument("--control-thread-id", help="Independent fresh ordinary Desktop thread identity")
     desktop_parser.add_argument("--fixture-dir", type=Path, help="Fixture directory for --prepare (must be empty)")
     desktop_parser.add_argument("--desktop-version", help="Current Desktop version observed in the fresh thread")
     desktop_parser.add_argument("--runtime-version", help="Current embedded runtime version observed in the fresh thread")
@@ -76,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
 
             result = run_verify_desktop(
                 prepare=args.prepare,
+                check_probes=args.check_probes,
+                control_thread_id=args.control_thread_id,
                 fixture_dir=args.fixture_dir,
                 evidence=args.evaluate,
                 codex_home=args.codex_home,
@@ -106,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
 def _print_human(command: str, result: dict) -> None:
     overall = result.get("overall", result.get("status", "PASS"))
     print(f"{command}: {overall}")
-    for key in ("installed", "removed", "preserved", "warnings", "errors", "lock_paths", "restart_guidance", "main_model_guidance", "verification_label", "surface", "fixture", "prompt", "evidence", "message", "core_orchestration", "behavioral_role_isolation", "strict_sandbox_isolation", "daily_use_readiness", "strict_least_privilege", "evidence_validity", "parent_model_evidence", "activation_required"):
+    for key in ("installed", "removed", "preserved", "warnings", "errors", "lock_paths", "restart_guidance", "main_model_guidance", "verification_label", "surface", "fixture", "prompt", "evidence", "message", "core_orchestration", "behavioral_role_isolation", "strict_sandbox_isolation", "daily_use_readiness", "strict_least_privilege", "evidence_validity", "parent_model_evidence", "activation_required", "control_prompt", "control_evidence", "explicit_activation_control", "probe_boundary_compliance", "probe_path_compliance"):
         values = result.get(key)
         if values:
             print(f"{key}: {', '.join(map(str, values)) if isinstance(values, list) else values}")

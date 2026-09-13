@@ -192,18 +192,22 @@ availability, native spawning, Desktop behavior, permissions, or model identity.
 It measures routing, fixture execution, and permissions for that process; it cannot
 establish or override Desktop readiness. No generic model-only role fallback is used.
 
-`verify-desktop --prepare` creates a disposable fixture and an unverified evidence
-form. `verify-desktop --evaluate <path>` checks current evidence against source,
+`verify-desktop --prepare` creates a disposable fixture and two unverified
+evidence forms for separate ordinary-control and activated threads (schema 4).
+`verify-desktop --evaluate <path>` checks current evidence against source,
 installed assets/configuration, OS, versions, timestamps, and task identity. It reports:
 
 | Dimension | Results |
 | --- | --- |
+| Explicit activation control | PASS / FAIL / UNVERIFIED |
+| Probe boundary compliance | PASS / FAIL / UNVERIFIED |
 | Core Desktop orchestration | PASS / PASS WITH NOTES / FAIL |
 | Strict sandbox isolation | PASS / BLOCKED BY HOST / FAIL / UNVERIFIED |
 | Daily-use readiness | PASS / PASS WITH NOTES / PASS WITH HOST LIMITATION / FAIL |
 | Strict least-privilege readiness | READY / UNAVAILABLE ON TESTED CODEX HOST / BLOCKED / UNVERIFIED |
 
-Core PASS plus confirmed host-blocked isolation produces **PASS WITH HOST LIMITATION**.
+Core PASS, independent no-skill control PASS, and probe boundary PASS plus confirmed
+host-blocked isolation produce **PASS WITH HOST LIMITATION**.
 Incorrect project configuration remains FAIL. Missing host attribution remains
 UNVERIFIED. Future correct enforcement produces isolation PASS and removes the host
 warning automatically. Stale evidence cannot qualify current-build acceptance.
@@ -215,8 +219,9 @@ and the completed workflow. Nesting enforcement, UI details, exhaustive attribut
 and unobservable effort retain their actual evidence classifications.
 
 Keep the hostile probes: read-only writes should be denied, and the bounded Fixer write
-should succeed. Successful unauthorized canaries remain evidence of a host limitation,
-not secure isolation. See [Desktop smoke](docs/desktop-smoke.md) and
+should succeed. Successful exact fixture canaries can establish a host limitation, not secure
+isolation. Outside-fixture or substitute probe paths fail acceptance. The harness owns
+all targets and requires a successful `--check-probes` preflight before delegation. See [Desktop smoke](docs/desktop-smoke.md) and
 [runtime limitations](docs/runtime-limitations.md).
 
 The existing Desktop observations support operational orchestration with the disclosed

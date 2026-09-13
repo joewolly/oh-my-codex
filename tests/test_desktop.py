@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from oh_my_codex.desktop import ROLES, evaluate_desktop_evidence, prepare_desktop_fixture
+from oh_my_codex.desktop import contained_target, validate_probe_plan, ROLES, evaluate_desktop_evidence, prepare_desktop_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,15 +46,29 @@ class DesktopVerificationTests(unittest.TestCase):
             "run_id": self.metadata["run_id"], "thread_id": "desktop-thread-1", "restart_completed": True,
             "new_thread_started": True, "skill_discovered": True, "parent_model": "gpt-6-astra",
             "parent_model_evidence": "DESKTOP_USER_STATE_VERIFIED", "parent_model_evidence_detail": "Operator recorded Astra/high selected in Desktop",
-            "explicit_skill_invocation": True, "normal_thread_without_skill": True,
+            "explicit_skill_invocation": True, "probe_preflight": "VERIFIED",
+            "observed_probe_paths": [row["path"] for row in self.metadata["probe_plan"].values()],
             "dependency_barriers_observed": True, "workflow_completed": True, "target_write_attribution": "VERIFIED",
             "parent_model_supported": True, "orchestrator_no_implementation": True, "reconciliation_observed": True,
             "receipt_observed": True, "oracle_review_observed": True, "oracle_review_result": "PASS",
         })
+        self.control_path = self.root / "control-evidence.json"
+        self.control = json.loads(self.control_path.read_text())
+        self.control.update({key: self.evidence[key] for key in ("surface", "os", "desktop_version", "runtime_version", "observed_at")})
+        self.control.update({"thread_id": "control-thread-1", "new_thread_started": True,
+            "skill_invoked": False, "activation_marker_observed": False, "policy_loaded": False,
+            "instructed_omc_orchestrator": False, "omc_workflow_forced": False,
+            "source_modifications_observed": False, "transcript_reviewed": True, "observation_basis": "DESKTOP_OPERATOR_REVIEW",
+            "evidence_reference": "Synthetic unit fixture: operator transcript observation", "response": "42. No mandatory role workflow.",
+            "activation_control_result": "PASS"})
+        self.control_path.write_text(json.dumps(self.control))
         receipt = {"task": "update target", "status": "completed", "files": ["target.py"], "validation": [{"command": "python -B -m unittest -v test_target.py", "result": "PASS"}], "deviations": [], "unresolved_risks": []}
         finding = {"file": "review_target.py", "function": "average", "input": {"values": []}, "expected": 0, "observed": "ZeroDivisionError"}
         for role in ROLES:
             row = self.evidence["roles"][role]
+            row.update({"actual_probe_path": self.metadata["probe_plan"][role]["path"],
+                        "probe_instruction_path": self.metadata["probe_plan"][role]["path"],
+                        "write_probe_sha256": hashlib.sha256(bytes.fromhex(self.metadata["probe_plan"][role]["contents_hex"])).hexdigest()})
             row.update({
                 "role": role, "spawned": True, "semantic_task_name": f"{role.removeprefix('omc_')}_desktop_smoke", "observed_model": "gpt-5.6-sol" if role == "omc_oracle" else "gpt-5.6-luna",
                 "observed_effort": "medium" if role == "omc_explorer" else "high", "observed_sandbox": "workspace-write" if role == "omc_fixer" else "read-only",
@@ -69,7 +83,7 @@ class DesktopVerificationTests(unittest.TestCase):
         (self.root / ".omc-probes/fixer-write.txt").write_text("OMC Desktop Fixer probe\n", encoding="utf-8")
 
     def _evaluate(self):
-        return evaluate_desktop_evidence(self.evidence_path, desktop_version="26.908.40834", runtime_version="0.154.0-alpha.6.2", thread_id="desktop-thread-1")
+        return evaluate_desktop_evidence(self.evidence_path, desktop_version="26.908.40834", runtime_version="0.154.0-alpha.6.2", thread_id="desktop-thread-1", control_thread_id="control-thread-1")
 
     def test_prepare_is_fail_closed_and_positive_evaluation_is_pass_with_notes(self):
         self.assertEqual(self.evidence["overall"], "FAIL")
@@ -85,7 +99,7 @@ class DesktopVerificationTests(unittest.TestCase):
         old = (datetime.now(timezone.utc) - timedelta(days=2)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         self.evidence.update({"observed_at": old, "desktop_version": "0.0", "runtime_version": "0.0"})
         self.evidence_path.write_text(json.dumps(self.evidence), encoding="utf-8")
-        report = evaluate_desktop_evidence(self.evidence_path, desktop_version="0.0", runtime_version="0.0", thread_id="desktop-thread-1")
+        report = evaluate_desktop_evidence(self.evidence_path, desktop_version="0.0", runtime_version="0.0", thread_id="desktop-thread-1", control_thread_id="control-thread-1")
         self.assertEqual(report["overall"], "FAIL")
         self.assertTrue(any(c["name"] == "timestamp" and c["status"] == "FAILED" for c in report["checks"]))
 
@@ -130,7 +144,7 @@ class DesktopVerificationTests(unittest.TestCase):
         self.assertEqual(report["overall"], "FAIL")
         self.evidence["skills_home"] = str(self.root / "different-skills")
         self.evidence_path.write_text(json.dumps(self.evidence), encoding="utf-8")
-        report = evaluate_desktop_evidence(self.evidence_path, desktop_version="26.908.40834", runtime_version="0.154.0-alpha.6.2", thread_id="desktop-thread-1")
+        report = evaluate_desktop_evidence(self.evidence_path, desktop_version="26.908.40834", runtime_version="0.154.0-alpha.6.2", thread_id="desktop-thread-1", control_thread_id="control-thread-1")
         self.assertEqual(report["overall"], "FAIL")
 
     def test_protected_bytes_extra_nested_control_and_malformed_roles_fail(self):
@@ -188,7 +202,7 @@ class DesktopVerificationTests(unittest.TestCase):
             # Legacy aggregate failures from sandbox probes must not veto semantic checks.
             row["result"] = "FAILED"
             if role != "omc_fixer":
-                data = f"{role} authorized canary\n".encode()
+                data = bytes.fromhex(self.metadata["probe_plan"][role]["contents_hex"])
                 (self.root / f".omc-probes/{role.removeprefix('omc_')}-write.txt").write_bytes(data)
                 row["write_probe_sha256"] = hashlib.sha256(data).hexdigest()
         self._save()
@@ -214,7 +228,7 @@ class DesktopVerificationTests(unittest.TestCase):
                 row["observed_model"] = original
 
     def test_critical_workflow_failures_still_fail_core(self):
-        for field in ("orchestrator_no_implementation", "dependency_barriers_observed", "workflow_completed", "explicit_skill_invocation", "normal_thread_without_skill", "target_write_attribution"):
+        for field in ("orchestrator_no_implementation", "dependency_barriers_observed", "workflow_completed", "explicit_skill_invocation", "target_write_attribution"):
             with self.subTest(field=field):
                 self._complete()
                 self.evidence[field] = False
@@ -344,7 +358,7 @@ class DesktopVerificationTests(unittest.TestCase):
         with contextlib.redirect_stdout(output):
             code = main(["verify-desktop", "--evaluate", str(self.evidence_path),
                          "--desktop-version", "26.908.40834", "--runtime-version", "0.154.0-alpha.6.2",
-                         "--thread-id", "desktop-thread-1"])
+                         "--thread-id", "desktop-thread-1", "--control-thread-id", "control-thread-1"])
         self.assertEqual(code, 0)
         for text in ("PASS WITH HOST LIMITATION", "BLOCKED BY HOST", "danger-full-access", "not technical write prevention"):
             self.assertIn(text, output.getvalue())
@@ -357,6 +371,190 @@ class DesktopVerificationTests(unittest.TestCase):
         self.assertEqual(report["daily_use_readiness"], "FAIL")
         self.assertEqual(report["strict_sandbox_isolation"], "UNVERIFIED")
 
+
+    def test_all_harness_targets_are_canonical_children_with_spaces(self):
+        plan = validate_probe_plan(self.root)
+        self.assertIn(" ", str(self.root))
+        for role in ROLES:
+            with self.subTest(role=role):
+                target = Path(plan["probe_plan"][role]["path"])
+                self.assertEqual(target.parent, self.root / ".omc-probes")
+                self.assertTrue(target.is_relative_to(self.root))
+                self.assertIn(json.dumps(str(target)), (self.root / "desktop-prompt.txt").read_text())
+        self.assertEqual(plan["fixer_target"], str(self.root / "target.py"))
+
+    def test_absolute_outside_target_rejected(self):
+        with self.assertRaises(ValueError):
+            contained_target(self.root, self.root.parent / "outside.txt")
+
+    def test_dotdot_escape_rejected(self):
+        for candidate in ("../outside.txt", ".omc-probes/../../outside.txt"):
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                contained_target(self.root, candidate)
+
+    def test_sibling_prefix_escape_rejected(self):
+        with self.assertRaises(ValueError):
+            contained_target(self.root, Path(str(self.root) + "-sibling") / "probe.txt")
+
+    def test_relative_normalization_inside_fixture(self):
+        self.assertEqual(contained_target(self.root, ".omc-probes/../target.py"), self.root / "target.py")
+
+    def test_symlink_escape_and_dangling_link_rejected(self):
+        for destination in (self.root.parent, self.root.parent / "missing"):
+            link = self.root / ".omc-probes/link"
+            link.symlink_to(destination)
+            with self.assertRaises(ValueError):
+                contained_target(self.root, link / "probe.txt")
+            link.unlink()
+
+    def test_symlink_loop_and_internal_link_rejected(self):
+        link = self.root / ".omc-probes/link"
+        for destination in (link, self.root / "value.txt"):
+            link.symlink_to(destination)
+            with self.assertRaises(ValueError):
+                contained_target(self.root, link)
+            link.unlink()
+
+    def test_canonical_temporary_root_alias(self):
+        alias = self.root.parent / "root alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        self.assertEqual(contained_target(alias, ".omc-probes/new.txt"), self.root / ".omc-probes/new.txt")
+        prepared = prepare_desktop_fixture(self.root.parent / "new fixture", codex_home=self.codex, skills_home=self.skills)
+        self.assertEqual(prepared["fixture"], str(Path(prepared["fixture"]).resolve(strict=True)))
+
+    def test_root_and_non_directory_parent_rejected(self):
+        for candidate in (self.root, self.root / "value.txt/probe"):
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                contained_target(self.root, candidate)
+
+    def test_hardlink_target_rejected(self):
+        target = self.root / ".omc-probes/explorer-write.txt"
+        target.hardlink_to(self.root / "value.txt")
+        with self.assertRaises(ValueError):
+            validate_probe_plan(self.root)
+
+    def test_preflight_rejects_changed_manifest_before_paths_returned(self):
+        for candidate in (str(self.root.parent / "outside.txt"), "../outside.txt", str(self.root / ".omc-probes/alternate.txt")):
+            self.metadata["probe_plan"]["omc_librarian"]["path"] = candidate
+            (self.root / ".omc-desktop.json").write_text(json.dumps(self.metadata))
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                validate_probe_plan(self.root)
+
+    def test_preflight_rejects_symlink_replacement_after_preparation(self):
+        shutil.rmtree(self.root / ".omc-probes")
+        (self.root / ".omc-probes").symlink_to(self.root.parent, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            validate_probe_plan(self.root)
+        self.assertFalse((self.root.parent / "librarian-write.txt").exists())
+
+    def test_preflight_rejects_modified_authorization_prompt(self):
+        self._complete()
+        with (self.root / "desktop-prompt.txt").open("a") as stream:
+            stream.write("Use ../outside.txt instead")
+        with self.assertRaises(ValueError):
+            validate_probe_plan(self.root)
+        self.assertEqual(self._evaluate()["probe_boundary_compliance"], "FAIL")
+
+    def test_alternate_path_inside_fixture_fails_for_every_specialist(self):
+        self._complete()
+        for role in ROLES:
+            row = self.evidence["roles"][role]
+            for field in ("actual_probe_path", "probe_instruction_path"):
+                original = row[field]
+                row[field] = str(self.root / ".omc-probes/alternate.txt")
+                self._save()
+                with self.subTest(role=role, field=field):
+                    self.assertEqual(self._evaluate()["probe_boundary_compliance"], "FAIL")
+                row[field] = original
+
+    def test_outside_recorded_probe_fails_even_with_host_limitation(self):
+        self._host_limitation()
+        self.evidence["observed_probe_paths"].append(str(self.root.parent / ".omc-probes/librarian-write.txt"))
+        self._save()
+        report = self._evaluate()
+        self.assertEqual(report["overall"], "FAIL")
+        self.assertEqual(report["probe_path_compliance"], "FAILED")
+        self.assertEqual(report["strict_sandbox_isolation"], "BLOCKED BY HOST")
+
+    def test_missing_probe_path_evidence_is_unverified(self):
+        self._complete()
+        del self.evidence["observed_probe_paths"]
+        self._save()
+        report = self._evaluate()
+        self.assertEqual(report["probe_path_compliance"], "UNVERIFIED")
+        self.assertEqual(report["overall"], "FAIL")
+
+    def test_literal_backslash_n_fails_even_when_hash_is_accurately_recorded(self):
+        self._host_limitation()
+        data = b"OMC Desktop Explorer probe\\n"
+        path = self.root / ".omc-probes/explorer-write.txt"
+        path.write_bytes(data)
+        self.evidence["roles"]["omc_explorer"]["write_probe_sha256"] = hashlib.sha256(data).hexdigest()
+        self._save()
+        report = self._evaluate()
+        self.assertEqual(report["overall"], "FAIL")
+        self.assertTrue(any(c["name"] == "probe-bytes:omc_explorer" and c["status"] == "FAILED" for c in report["checks"]))
+        self.assertEqual(path.read_bytes(), data)
+
+    def test_missing_control_is_unverified_even_with_legacy_boolean(self):
+        self._complete()
+        self.control_path.unlink()
+        self.evidence["normal_thread_without_skill"] = True
+        self._save()
+        report = self._evaluate()
+        self.assertEqual(report["explicit_activation_control"], "UNVERIFIED")
+        self.assertEqual(report["overall"], "FAIL")
+        self.assertEqual(report["core_orchestration"], "PASS")
+
+    def test_automatic_omc_activation_fails_control(self):
+        for field in ("activation_marker_observed", "policy_loaded", "instructed_omc_orchestrator", "omc_workflow_forced"):
+            self._complete()
+            self.control[field] = True
+            self.control_path.write_text(json.dumps(self.control))
+            with self.subTest(field=field):
+                self.assertEqual(self._evaluate()["explicit_activation_control"], "FAIL")
+                self.assertEqual(self._evaluate()["overall"], "FAIL")
+
+    def test_ordinary_subagent_capability_does_not_mean_omc_activation(self):
+        self._complete()
+        self.control["ordinary_subagents_used"] = True
+        self.control_path.write_text(json.dumps(self.control))
+        self.assertEqual(self._evaluate()["explicit_activation_control"], "PASS")
+
+    def test_stale_control_timestamp_or_fingerprint_cannot_pass(self):
+        for field, value in (("observed_at", "2000-01-01T00:00:00Z"), ("asset_fingerprints", {}), ("schema", 3), ("run_id", "old-run")):
+            self._complete()
+            self.control[field] = value
+            self.control_path.write_text(json.dumps(self.control))
+            with self.subTest(field=field):
+                self.assertEqual(self._evaluate()["explicit_activation_control"], "UNVERIFIED")
+                self.assertEqual(self._evaluate()["overall"], "FAIL")
+
+    def test_reused_activated_thread_or_invoked_control_is_unverified(self):
+        for field, value in (("thread_id", "desktop-thread-1"), ("skill_invoked", True), ("new_thread_started", False), ("observation_basis", "MODEL_SELF_CLAIM"), ("evidence_reference", "")):
+            self._complete()
+            self.control[field] = value
+            self.control_path.write_text(json.dumps(self.control))
+            with self.subTest(field=field):
+                self.assertEqual(self._evaluate()["explicit_activation_control"], "UNVERIFIED")
+
+    def test_control_prompt_does_not_load_or_invoke_policy(self):
+        prompt = (self.root / "control-prompt.txt").read_text()
+        for token in ("$oh-my-codex", "OMC_ORCHESTRATOR_V1", "SKILL.md"):
+            self.assertNotIn(token, prompt)
+        self.assertNotIn("OMC_ORCHESTRATOR_V1", (self.root / "desktop-prompt.txt").read_text())
+
+    def test_preflight_cli_returns_only_validated_paths_and_fails_closed(self):
+        from oh_my_codex.cli import main
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = main(["verify-desktop", "--check-probes", str(self.root), "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue())["probe_plan"], self.metadata["probe_plan"])
+        self.metadata["fixer_target"] = str(self.root.parent / "outside.py")
+        (self.root / ".omc-desktop.json").write_text(json.dumps(self.metadata))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["verify-desktop", "--check-probes", str(self.root), "--json"]), 2)
 
 
 if __name__ == "__main__":

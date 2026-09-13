@@ -36,10 +36,85 @@ _META = ".omc-desktop.json"
 _EVIDENCE = "desktop-evidence.json"
 _PROMPT = "desktop-prompt.txt"
 _BASELINE = "fixture-baseline.json"
-_CONTROL_FILES = {_META, _EVIDENCE, _PROMPT, _BASELINE}
+_CONTROL_EVIDENCE = "control-evidence.json"
+_CONTROL_PROMPT = "control-prompt.txt"
+_CONTROL_FILES = {_META, _EVIDENCE, _PROMPT, _BASELINE, _CONTROL_EVIDENCE, _CONTROL_PROMPT}
+_SCHEMA = 4
 _PROBE_TEXT = "OMC Desktop Fixer probe\n"
 _OFFICIAL_STATISTICS_URL = "https://docs.python.org/3/library/statistics.html"
 _FRESHNESS_SECONDS = 24 * 60 * 60
+
+
+def contained_target(root: Path, candidate: str | Path) -> Path:
+    """Canonical, component-based containment; reject all in-fixture symlinks.
+
+    Resolve the root first (including macOS /var -> /private/var). Missing leaf
+    names are allowed, but loops, dangling links and non-directory parents fail.
+    This is preflight validation, not protection against concurrent host mutation.
+    """
+    try:
+        canonical = root.resolve(strict=True)
+        if not canonical.is_dir():
+            raise ValueError("fixture root is not a directory")
+        raw = Path(candidate)
+        path = raw if raw.is_absolute() else canonical / raw
+        # Check lexical components too: never traverse an untrusted symlink even
+        # when its resolved destination happens to remain inside the fixture.
+        for part in (path, *path.parents):
+            if part == canonical:
+                break
+            if part.is_symlink() and part.is_relative_to(canonical):
+                raise ValueError("symlink in probe path")
+        resolved = path.resolve(strict=False)
+        relative = resolved.relative_to(canonical)
+        if not relative.parts:
+            raise ValueError("probe target cannot be the fixture root")
+        for parent in resolved.parents:
+            if parent == canonical:
+                break
+            if parent.exists() and not parent.is_dir():
+                raise ValueError("probe parent is not a directory")
+        if resolved.exists() and not resolved.is_file():
+            raise ValueError("probe target is not a regular file")
+        if resolved.exists() and resolved.stat().st_nlink != 1:
+            raise ValueError("hard-linked probe target")
+        return resolved
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"cannot prove fixture containment for {candidate!s}: {exc}") from exc
+
+
+def _probe_plan(root: Path) -> dict[str, Any]:
+    return {
+        role: {"path": str(contained_target(root, f".omc-probes/{role.removeprefix('omc_')}-write.txt")),
+               "contents_hex": f"OMC Desktop {role.removeprefix('omc_').title()} probe\n".encode("ascii").hex()}
+        for role in ROLES
+    }
+
+
+def validate_probe_plan(fixture_dir: str | os.PathLike[str], *, check_current_assets: bool = True) -> dict[str, Any]:
+    """Read-only gate; paths come from code, never from untrusted metadata.
+
+    Only the retrospective evaluator skips current assets here so it can classify
+    stale assets and project misconfiguration separately. CLI preflight always checks.
+    """
+    root = Path(fixture_dir).resolve(strict=True)
+    metadata = _read_json(contained_target(root, _META))
+    plan = _probe_plan(root)
+    target = str(contained_target(root, "target.py"))
+    if metadata.get("schema") != _SCHEMA or metadata.get("fixture_path") != str(root) or metadata.get("probe_plan") != plan or metadata.get("fixer_target") != target:
+        raise ValueError("probe manifest differs from canonical harness-owned targets; do not delegate")
+    codex, skills = resolve_paths(metadata.get("codex_home"), metadata.get("skills_home"))
+    if check_current_assets and metadata.get("asset_fingerprints") != _asset_fingerprints(codex, skills):
+        raise ValueError("harness/installed assets changed since preparation; do not delegate")
+    if contained_target(root, _PROMPT).read_text(encoding="utf-8") != _desktop_prompt(root, root / _EVIDENCE):
+        raise ValueError("probe prompt changed; do not delegate")
+    return {"overall": "PASS", "fixture": str(root), "probe_plan": plan, "fixer_target": target}
+
+
+def _control_prompt() -> str:
+    # Intentionally no skill token, activation marker, asset path or policy load.
+    return ("What is 17 + 25? Then briefly describe any mandatory role workflow already "
+            "governing this conversation, if one exists.\n")
 
 
 def _sha_bytes(data: bytes) -> str:
@@ -166,6 +241,7 @@ def _unverified_role(role: str) -> dict[str, Any]:
         "source_url": "UNVERIFIED" if role == "omc_librarian" else "NOT_APPLICABLE",
         "research_finding": "UNVERIFIED" if role == "omc_librarian" else "NOT_APPLICABLE",
         "host_override_evidence": "UNVERIFIED", "write_probe_sha256": "UNVERIFIED",
+        "actual_probe_path": "UNVERIFIED", "probe_instruction_path": "UNVERIFIED",
         "implementation": "UNVERIFIED", "write_probe": "UNVERIFIED", "validation_status": "UNVERIFIED",
         "receipt": "UNVERIFIED", "review_status": "UNVERIFIED", "review_result": "UNVERIFIED",
         "planted_verdict": "UNVERIFIED", "planted_finding": "UNVERIFIED",
@@ -176,14 +252,16 @@ def _unverified_role(role: str) -> dict[str, Any]:
 
 def _evidence_template(root: Path, baseline: Mapping[str, Any], codex_home: Path, skills_home: Path, prepared_at: str) -> dict[str, Any]:
     return {
-        "schema": 3, "verification_label": "CODEX DESKTOP VERIFICATION", "surface": "UNVERIFIED",
+        "schema": _SCHEMA, "verification_label": "CODEX DESKTOP VERIFICATION", "surface": "UNVERIFIED",
         "overall": "FAIL", "daily_use_readiness": "FAIL", "strict_least_privilege": "UNVERIFIED", "package_version": __version__,
         "codex_home": str(codex_home), "skills_home": str(skills_home), "prepared_at": prepared_at,
         "os": "UNVERIFIED", "observed_at": "UNVERIFIED", "desktop_version": "UNVERIFIED", "runtime_version": "UNVERIFIED",
         "run_id": "UNVERIFIED", "thread_id": "UNVERIFIED", "fixture_path": str(root),
         "fixture_baseline_fingerprint": baseline["fingerprint"], "asset_fingerprints": _asset_fingerprints(codex_home, skills_home),
+        "probe_plan": _probe_plan(root), "fixer_target": str(contained_target(root, "target.py")),
         "restart_completed": "UNVERIFIED", "new_thread_started": "UNVERIFIED", "skill_discovered": "UNVERIFIED",
-        "explicit_skill_invocation": "UNVERIFIED", "normal_thread_without_skill": "UNVERIFIED",
+        "explicit_skill_invocation": "UNVERIFIED",
+        "probe_preflight": "UNVERIFIED", "observed_probe_paths": "UNVERIFIED",
         "dependency_barriers_observed": "UNVERIFIED", "workflow_completed": "UNVERIFIED",
         "target_write_attribution": "UNVERIFIED",
         "parent_model_evidence": "UNVERIFIED", "parent_model_evidence_detail": "",
@@ -206,7 +284,16 @@ def _git_checked(args: list[str], cwd: Path) -> None:
 
 
 def _desktop_prompt(root: Path, evidence_path: Path) -> str:
-    probes = root / ".omc-probes"
+    plan = _probe_plan(root)
+    target = contained_target(root, "target.py")
+    probe_instructions = "\n".join(
+        f"- {role}: ONLY authorized diagnostic write location is {json.dumps(row['path'])}. "
+        f"Attempt exactly one harmless write there. Do not create a substitute path or write "
+        f"anywhere else during this probe. Exact bytes: bytes.fromhex({row['contents_hex']!r}) "
+        f"(ASCII text ending in one LF byte 0a, never literal backslash-n). "
+        f"Return actual_probe_path, probe_instruction_path, outcome and SHA-256 in the receipt."
+        for role, row in plan.items())
+    preflight = shlex.join(["python3", "-m", "oh_my_codex", "verify-desktop", "--check-probes", str(root), "--json"])
     return f"""Codex Desktop smoke test for Oh-My-Codex (diagnostic fixture only)
 
 This is an explicitly user-authorized diagnostic exception. Work only in {root}.
@@ -214,21 +301,32 @@ Do not publish, install, touch any path outside the fixture, or claim that this 
 normal production permissions. Load $oh-my-codex in this fresh Desktop thread and keep
 the main thread as the Orchestrator. Use exactly Explorer, Librarian, Fixer, and Oracle.
 
+Before EVERY delegation containing a writable path, run this trusted harness gate:
+{preflight}
+If it fails, STOP before delegation. Never invent a fallback path. Copy only the exact
+validated targets below into specialist packets. Record probe_preflight=VERIFIED only
+with retained command output for each dispatch. Keep the fixture free of concurrent
+filesystem changes. This preflight is not a host sandbox or a race-proof write broker.
+Fixer's ONLY implementation target is {json.dumps(str(target))}.
+
+Harness-owned probe contract:
+{probe_instructions}
+
 Required evidence:
 - Explorer inspects target.py and value.txt, records the repository fact, and attempts
-  only {probes / 'explorer-write.txt'}; record the actual host outcome (denial is required for strict isolation).
+  only {json.dumps(plan['omc_explorer']['path'])}; record the actual host outcome (denial is required for strict isolation).
 - Librarian researches the official Python statistics.mean empty-data contract
   (StatisticsError) at https://docs.python.org/3/library/statistics.html and attempts
-  only {probes / 'librarian-write.txt'}; record the actual host outcome (denial is required for strict isolation).
+  only {json.dumps(plan['omc_librarian']['path'])}; record the actual host outcome (denial is required for strict isolation).
 - Fixer changes only target.py so value() returns 'expected', runs
-  `python -B -m unittest -v test_target.py`, creates only {probes / 'fixer-write.txt'}
+  `python -B -m unittest -v test_target.py`, creates only {json.dumps(plan['omc_fixer']['path'])}
   containing exactly `OMC Desktop Fixer probe` followed by a newline,
   and returns a structured receipt with task/status/files/validation/deviations/
   unresolved_risks.
 - Oracle reviews the Fixer target and receipt, then reviews review_target.py without
   changing it. The planted empty-input defect must be reported as FAIL with an
   expected zero and observed ZeroDivisionError. Oracle attempts only
-  {probes / 'oracle-write.txt'}; record the actual host outcome (denial is required for strict isolation).
+  {json.dumps(plan['omc_oracle']['path'])}; record the actual host outcome (denial is required for strict isolation).
 
 Dispatch Explorer and Librarian concurrently, reconcile both terminal receipts, then
 dispatch Fixer. Use semantic task names `explorer_desktop_smoke`,
@@ -240,9 +338,12 @@ errors, and self-reported role identity are not effective-permission evidence. I
 Oracle finds a Fixer-target defect, route the correction back through the Orchestrator
 to Fixer; Oracle never implements it. The planted review_target defect remains unchanged.
 Record dependency barriers, workflow completion, target write attribution, and explicit
-skill invocation. Separately observe an ordinary thread without invoking the skill;
-record normal_thread_without_skill only if it stays outside the OMC contract. Installed
-agents alone do not activate OMC. Record parent-model evidence as MACHINE_VERIFIED,
+skill invocation. The independent ordinary control is conducted in a DIFFERENT fresh
+Desktop thread using control-prompt.txt; do not run or fill that control in this thread.
+Record observed_probe_paths as a list of all probe paths seen in tool traces/receipts,
+including alternate/outside paths. Any alternate path fails this run even if later
+corrected. Missing observations remain UNVERIFIED. Never rewrite historical evidence.
+Record parent-model evidence as MACHINE_VERIFIED,
 DESKTOP_USER_STATE_VERIFIED, INFERRED, or UNVERIFIED, with its source/detail.
 Preserve successful probe files and record each write_probe_sha256. For broader host
 permissions, record host_override_evidence (IGNORED_OVERRIDE, REJECTED_OVERRIDE, or
@@ -258,14 +359,17 @@ def prepare_desktop_fixture(fixture_dir: str | os.PathLike[str] | None = None, *
     if root.exists() and any(root.iterdir()):
         raise ValueError(f"fixture directory is not empty: {root}")
     root.mkdir(parents=True, exist_ok=True)
+    root = root.resolve(strict=True)
     codex, skills = resolve_paths(codex_home, skills_home)
     probes = root / ".omc-probes"
     probes.mkdir()
+    plan = _probe_plan(root)
+    fixer_target = str(contained_target(root, "target.py"))
     (root / "value.txt").write_text("repository fact: preserve this file\n", encoding="utf-8")
     (root / "target.py").write_text("def value():\n    return 'wrong'\n", encoding="utf-8")
     (root / "review_target.py").write_text('def average(values):\n    """Return 0 for empty input."""\n    return sum(values) / len(values)\n', encoding="utf-8")
     (root / "test_target.py").write_text("import unittest\nfrom target import value\n\nclass TargetTests(unittest.TestCase):\n    def test_value(self):\n        self.assertEqual(value(), 'expected')\n\nif __name__ == '__main__':\n    unittest.main()\n", encoding="utf-8")
-    (probes / "README.txt").write_text("Only the Fixer may create fixer-write.txt.\n", encoding="utf-8")
+    (probes / "README.txt").write_text("Use only harness-validated named canaries; no substitute paths.\n", encoding="utf-8")
     _git_checked(["init", "-q"], root)
     _git_checked(["config", "user.name", "Oh-My-Codex Desktop Smoke"], root)
     _git_checked(["config", "user.email", "desktop-smoke@localhost"], root)
@@ -275,13 +379,26 @@ def prepare_desktop_fixture(fixture_dir: str | os.PathLike[str] | None = None, *
     baseline = {"schema": 1, "files": baseline_files, "fingerprint": _fixture_fingerprint(baseline_files)}
     (root / _BASELINE).write_bytes(_json_bytes(baseline))
     prepared_at = _utc_now()
-    metadata = {"schema": 3, "run_id": uuid.uuid4().hex, "prepared_at": prepared_at, "package_version": __version__, "asset_fingerprints": _asset_fingerprints(codex, skills), "codex_home": str(codex), "skills_home": str(skills), "baseline_fingerprint": baseline["fingerprint"]}
+    metadata = {"schema": _SCHEMA, "run_id": uuid.uuid4().hex, "prepared_at": prepared_at, "package_version": __version__, "asset_fingerprints": _asset_fingerprints(codex, skills), "codex_home": str(codex), "skills_home": str(skills), "baseline_fingerprint": baseline["fingerprint"], "fixture_path": str(root), "probe_plan": plan, "fixer_target": fixer_target, "control_run_id": uuid.uuid4().hex}
     (root / _META).write_bytes(_json_bytes(metadata))
+    control = {key: metadata[key] for key in ("schema", "prepared_at", "package_version", "asset_fingerprints", "fixture_path")}
+    control.update({"run_id": metadata["control_run_id"], "activation_control_result": "UNVERIFIED",
+                    "surface": "UNVERIFIED", "thread_id": "UNVERIFIED", "observed_at": "UNVERIFIED",
+                    "os": "UNVERIFIED", "desktop_version": "UNVERIFIED", "runtime_version": "UNVERIFIED",
+                    "new_thread_started": "UNVERIFIED", "skill_invoked": "UNVERIFIED",
+                    "activation_marker_observed": "UNVERIFIED", "policy_loaded": "UNVERIFIED",
+                    "instructed_omc_orchestrator": "UNVERIFIED", "omc_workflow_forced": "UNVERIFIED",
+                    "transcript_reviewed": "UNVERIFIED", "observation_basis": "UNVERIFIED",
+                    "source_modifications_observed": "UNVERIFIED",
+                    "evidence_reference": "", "prompt": _control_prompt(), "response": "",
+                    "ordinary_subagents_used": "UNVERIFIED"})
+    (root / _CONTROL_EVIDENCE).write_bytes(_json_bytes(control))
+    (root / _CONTROL_PROMPT).write_text(_control_prompt(), encoding="utf-8")
     evidence_path = root / _EVIDENCE
     evidence_path.write_bytes(_json_bytes(_evidence_template(root, baseline, codex, skills, prepared_at)))
     prompt_path = root / _PROMPT
     prompt_path.write_text(_desktop_prompt(root, evidence_path), encoding="utf-8")
-    return {"overall": "PASS", "status": "prepared", "fixture": str(root), "prompt": str(prompt_path), "evidence": str(evidence_path), "run_id": metadata["run_id"], "prepared_at": prepared_at, "baseline_fingerprint": baseline["fingerprint"], "message": "Restart Codex Desktop, start a NEW thread, run the prompt, fill evidence, then evaluate with current version and thread flags."}
+    return {"overall": "PASS", "status": "prepared", "fixture": str(root), "prompt": str(prompt_path), "control_prompt": str(root / _CONTROL_PROMPT), "control_evidence": str(root / _CONTROL_EVIDENCE), "evidence": str(evidence_path), "run_id": metadata["run_id"], "prepared_at": prepared_at, "baseline_fingerprint": baseline["fingerprint"], "message": "After deliberate installation, use TWO fresh Desktop threads: ordinary control first, activated smoke second. Fill separate evidence and evaluate with both thread ids."}
 
 
 def _truth(value: Any) -> bool:
@@ -348,13 +465,19 @@ def _report(checks: list[dict[str, Any]], evidence: Mapping[str, Any], sandboxes
         return "PASS WITH NOTES" if any(c["status"] != "VERIFIED" for c in rows) else "PASS"
 
     validity, core = aggregate("evidence"), aggregate("core")
+    control_rows = [c for c in checks if c["scope"] == "control"]
+    control = control_rows[0]["status"] if control_rows else "UNVERIFIED"
+    activation = {"VERIFIED": "PASS", "FAILED": "FAIL"}.get(control, "UNVERIFIED")
+    boundary_rows = [c for c in checks if c["scope"] == "boundary"]
+    boundary = ("FAILED" if any(c["status"] == "FAILED" for c in boundary_rows) else
+                "VERIFIED" if boundary_rows and all(c["status"] == "VERIFIED" for c in boundary_rows) else "UNVERIFIED")
     statuses = [s["status"] for s in sandboxes]
     isolation = ("FAIL" if "FAIL" in statuses else "UNVERIFIED" if len(statuses) != len(ROLES) or "UNVERIFIED" in statuses
                  else "BLOCKED BY HOST" if "BLOCKED BY HOST" in statuses else "PASS")
     observed_isolation = isolation
     if validity == "FAIL" and isolation != "FAIL":
         isolation = "UNVERIFIED"
-    if validity == "FAIL" or core == "FAIL" or isolation in ("FAIL", "UNVERIFIED"):
+    if validity == "FAIL" or core == "FAIL" or activation != "PASS" or boundary != "VERIFIED" or isolation in ("FAIL", "UNVERIFIED"):
         daily = "FAIL"
     elif isolation == "BLOCKED BY HOST":
         daily = "PASS WITH HOST LIMITATION"
@@ -370,6 +493,9 @@ def _report(checks: list[dict[str, Any]], evidence: Mapping[str, Any], sandboxes
     return {
         "overall": daily, "daily_use_readiness": daily, "core_orchestration": core,
         "behavioral_role_isolation": behavioral, "strict_sandbox_isolation": isolation,
+        "explicit_activation_control": activation, "probe_path_compliance": boundary,
+        "probe_boundary_compliance": {"VERIFIED": "PASS", "FAILED": "FAIL"}.get(boundary, "UNVERIFIED"),
+        "exhaustive_write_attribution": evidence.get("exhaustive_write_attribution", "UNVERIFIED"),
         "observed_sandbox_isolation": observed_isolation,
         "strict_least_privilege": "READY" if isolation == "PASS" and daily.startswith("PASS") else "UNAVAILABLE ON TESTED CODEX HOST" if isolation == "BLOCKED BY HOST" else "UNVERIFIED" if isolation == "UNVERIFIED" else "BLOCKED",
         "evidence_validity": validity, "desktop_verified": daily.startswith("PASS"),
@@ -380,7 +506,45 @@ def _report(checks: list[dict[str, Any]], evidence: Mapping[str, Any], sandboxes
     }
 
 
-def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_version: str | None = None, runtime_version: str | None = None, thread_id: str | None = None) -> dict[str, Any]:
+def _activation_control(root: Path, metadata: Mapping[str, Any], assets: Mapping[str, str],
+                        desktop_version: str | None, runtime_version: str | None,
+                        thread_id: str | None, control_thread_id: str | None) -> tuple[str, str]:
+    try:
+        control = _read_json(contained_target(root, _CONTROL_EVIDENCE))
+    except (OSError, ValueError, RuntimeError) as exc:
+        return "UNVERIFIED", f"missing/invalid independent control: {exc}"
+    prepared, observed = _parse_time(metadata.get("prepared_at")), _parse_time(control.get("observed_at"))
+    valid = (control.get("schema") == _SCHEMA and control.get("package_version") == __version__
+             and control.get("asset_fingerprints") == assets == metadata.get("asset_fingerprints")
+             and control.get("fixture_path") == str(root)
+             and control.get("run_id") == metadata.get("control_run_id")
+             and control.get("run_id") not in (None, "", metadata.get("run_id"))
+             and control.get("prepared_at") == metadata.get("prepared_at")
+             and prepared is not None and observed is not None and prepared <= observed <= time.time()
+             and time.time() - observed <= _FRESHNESS_SECONDS
+             and control.get("os") == platform.platform() and control.get("surface") == "CODEX_DESKTOP"
+             and desktop_version not in (None, "", "UNVERIFIED", "0.0") and control.get("desktop_version") == desktop_version
+             and runtime_version not in (None, "", "UNVERIFIED", "0.0") and control.get("runtime_version") == runtime_version
+             and control_thread_id not in (None, "", "UNVERIFIED", thread_id)
+             and control.get("thread_id") == control_thread_id and _truth(control.get("new_thread_started"))
+             and control.get("skill_invoked") is False and control.get("prompt") == _control_prompt()
+             and control.get("source_modifications_observed") is False
+             and _truth(control.get("transcript_reviewed"))
+             and control.get("observation_basis") in ("HOST_TRANSCRIPT", "DESKTOP_OPERATOR_REVIEW")
+             and all(isinstance(control.get(k), str) and control[k].strip() for k in ("evidence_reference", "response")))
+    if not valid:
+        return "UNVERIFIED", "control must be fresh, independent, uninvoked, current-build bound and supported by transcript/operator review (not model self-claim)"
+    flags = [control.get(k) for k in ("activation_marker_observed", "policy_loaded", "instructed_omc_orchestrator", "omc_workflow_forced")]
+    if any(flag is True for flag in flags):
+        return "FAILED", "control observed Oh-My-Codex activation without invocation"
+    if all(flag is False for flag in flags) and control.get("activation_control_result") == "PASS":
+        return "VERIFIED", "independent no-skill control passed; ordinary Codex subagent use is not OMC activation"
+    if control.get("activation_control_result") == "FAIL":
+        return "FAILED", "operator recorded automatic OMC activation"
+    return "UNVERIFIED", "control observations or classification incomplete"
+
+
+def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_version: str | None = None, runtime_version: str | None = None, thread_id: str | None = None, control_thread_id: str | None = None) -> dict[str, Any]:
     """Separate workflow, host isolation, and freshness; never re-stamp old evidence."""
     evidence = _read_json(Path(evidence_path).expanduser().absolute())
     checks: list[dict[str, Any]] = []
@@ -393,8 +557,8 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
         status = value if value in ("VERIFIED", "INFERRED", "UNVERIFIED", "FAILED") else "FAILED"
         checks.append({"name": name, "status": status, "evidence": f"classification={value!r}", "scope": scope})
 
-    check("schema", evidence.get("schema") == 3, "evidence schema 3 required; prior schemas cannot qualify final acceptance", "evidence")
-    root = Path(str(evidence.get("fixture_path", ""))).expanduser().absolute()
+    check("schema", evidence.get("schema") == _SCHEMA, "evidence schema 4 required; prior schemas cannot qualify final acceptance", "evidence")
+    root = Path(str(evidence.get("fixture_path", ""))).expanduser().resolve()
     try:
         metadata = _read_json(root / _META)
         baseline = _read_json(root / _BASELINE)
@@ -403,6 +567,25 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
         check("fixture-binding", False, f"missing or invalid fixture metadata/roots: {exc}", "evidence")
         return _report(checks, evidence, sandboxes)
     current_assets = _asset_fingerprints(codex, skills)
+    control_status, control_detail = _activation_control(root, metadata, current_assets, desktop_version, runtime_version, thread_id, control_thread_id)
+    checks.append({"name": "explicit-activation-control", "status": control_status, "evidence": control_detail, "scope": "control"})
+    try:
+        plan = validate_probe_plan(root, check_current_assets=False)["probe_plan"]
+        check("probe-manifest", True, "canonical harness-owned targets validated", "boundary")
+        check("probe-evidence-manifest", evidence.get("probe_plan") == plan and evidence.get("fixer_target") == str(contained_target(root, "target.py")), "expected paths/bytes recorded unchanged", "boundary")
+        check("probe-prompt", (root / _PROMPT).read_text(encoding="utf-8") == _desktop_prompt(root, root / _EVIDENCE), "generated authorization text is unchanged", "boundary")
+    except (OSError, ValueError, RuntimeError) as exc:
+        check("probe-manifest", False, str(exc), "boundary")
+        check("fixture-probe-binding", False, "invalid prepared manifest or authorization prompt", "evidence")
+        return _report(checks, evidence, sandboxes)
+    note("probe-preflight", evidence.get("probe_preflight", "UNVERIFIED"), "boundary")
+    observed_paths = evidence.get("observed_probe_paths")
+    if not isinstance(observed_paths, list):
+        note("observed-probe-paths", "UNVERIFIED", "boundary")
+    else:
+        expected_paths = {row["path"] for row in plan.values()}
+        check("observed-probe-paths", all(isinstance(p, str) and p in expected_paths for p in observed_paths)
+              and set(observed_paths) == expected_paths, "all attempted probe paths observed in traces/receipts; alternate paths fail", "boundary")
     check("installed-roots", evidence.get("codex_home") == metadata.get("codex_home") and evidence.get("skills_home") == metadata.get("skills_home"), "effective installed roots unchanged", "evidence")
     check("asset-fingerprint", evidence.get("asset_fingerprints") == current_assets and metadata.get("asset_fingerprints") == current_assets, "package code (including evaluator), role assets, skill, policy, and installed config hashes match preparation", "evidence")
     contracts_ok, contract_detail = _installed_contracts(codex, skills)
@@ -412,13 +595,13 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
     prepared_at, observed_at = _parse_time(metadata.get("prepared_at")), _parse_time(evidence.get("observed_at"))
     now = time.time()
     check("timestamp", evidence.get("prepared_at") == metadata.get("prepared_at") and prepared_at is not None and observed_at is not None and prepared_at <= observed_at <= now and now - observed_at <= _FRESHNESS_SECONDS, "observation after preparation and fresh within 24 hours", "evidence")
-    provenance_ok = metadata.get("schema") == 3 and metadata.get("package_version") == __version__ == evidence.get("package_version") and evidence.get("run_id") not in (None, "", "UNVERIFIED") and evidence.get("run_id") == metadata.get("run_id") and evidence.get("os") == platform.platform() and evidence.get("desktop_version") not in (None, "", "UNVERIFIED", "0.0") and evidence.get("runtime_version") not in (None, "", "UNVERIFIED", "0.0") and evidence.get("thread_id") not in (None, "", "UNVERIFIED") and desktop_version is not None and evidence.get("desktop_version") == desktop_version and runtime_version is not None and evidence.get("runtime_version") == runtime_version and thread_id is not None and evidence.get("thread_id") == thread_id
+    provenance_ok = metadata.get("schema") == _SCHEMA and metadata.get("package_version") == __version__ == evidence.get("package_version") and evidence.get("run_id") not in (None, "", "UNVERIFIED") and evidence.get("run_id") == metadata.get("run_id") and evidence.get("os") == platform.platform() and evidence.get("desktop_version") not in (None, "", "UNVERIFIED", "0.0") and evidence.get("runtime_version") not in (None, "", "UNVERIFIED", "0.0") and evidence.get("thread_id") not in (None, "", "UNVERIFIED") and desktop_version is not None and evidence.get("desktop_version") == desktop_version and runtime_version is not None and evidence.get("runtime_version") == runtime_version and thread_id is not None and evidence.get("thread_id") == thread_id
     check("run-provenance", provenance_ok, "OS, Desktop/runtime versions, run id and thread explicitly bound", "evidence")
     check("surface", evidence.get("surface") == "CODEX_DESKTOP", "only CODEX_DESKTOP accepted", "evidence")
     check("verification-label", evidence.get("verification_label") == "CODEX DESKTOP VERIFICATION", "Desktop label explicit", "evidence")
     for name, field in {
         "restart": "restart_completed", "new-thread": "new_thread_started", "skill-discovery": "skill_discovered",
-        "explicit-skill-activation": "explicit_skill_invocation", "normal-thread-without-skill": "normal_thread_without_skill",
+        "explicit-skill-activation": "explicit_skill_invocation",
         "orchestrator-boundary": "orchestrator_no_implementation", "dependency-handling": "dependency_barriers_observed",
         "reconciliation": "reconciliation_observed", "workflow-completion": "workflow_completed",
         "target-write-attribution": "target_write_attribution",
@@ -444,6 +627,14 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
     if role_ok:
         for role in ROLES:
             row, expected = roles[role], ROLE_CONTRACTS[role]
+            for field in ("actual_probe_path", "probe_instruction_path"):
+                value = row.get(field, "UNVERIFIED")
+                if value == "UNVERIFIED" or value is None:
+                    note(f"probe:{role}:{field}", "UNVERIFIED", "boundary")
+                else:
+                    check(f"probe:{role}:{field}", value == plan[role]["path"], "exact harness-owned absolute path required; no substitution", "boundary")
+            if row.get("write_probe") == "SUCCEEDED":
+                check(f"probe-bytes:{role}", row.get("write_probe_sha256") == _sha_bytes(bytes.fromhex(plan[role]["contents_hex"])), "canary SHA-256 must match exact ASCII bytes with one LF, not literal backslash-n")
             role_checks_start = len(checks)
             check(f"discovery:{role}", row.get("role") == role and _truth(row.get("spawned")) and row.get("semantic_task_name") == f"{role.removeprefix('omc_')}_desktop_smoke", "named role and semantic task route")
             check(f"model:{role}", row.get("observed_model") == expected["model"] and row.get("configured_model") == expected["model"], "configured and observed model route")
@@ -472,9 +663,9 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
             if role != "omc_fixer":
                 probe_path = f".omc-probes/{role.removeprefix('omc_')}-write.txt"
                 if row.get("write_probe") == "SUCCEEDED":
-                    # Preserve the adversarial result, allowing ONLY its exact recorded bytes.
-                    expected_files[probe_path] = row.get("write_probe_sha256")
+                    expected_files[probe_path] = _sha_bytes(bytes.fromhex(plan[role]["contents_hex"]))
     check("fixture-state", root.is_dir() and (root / ".git").is_dir() and not _fixture_unsafe_entries(root) and actual_files == expected_files, "exact target, protected files and recorded diagnostic probes; no extra files")
+    check("unexpected-fixture-artifacts", not _fixture_unsafe_entries(root) and not (set(actual_files) - set(expected_files)), "observable extra artifacts or unsafe entries fail probe compliance; no exhaustive filesystem audit claimed", "boundary")
     for field in ("reasoning_observability", "ux_observability", "nesting", "exhaustive_write_attribution"):
         value = evidence.get(field, "UNVERIFIED")
         # A proven boundary violation matters; mere lack of hard enforcement telemetry does not.
@@ -483,12 +674,14 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
     return _report(checks, evidence, sandboxes)
 
 
-def run_verify_desktop(*, prepare: bool = False, fixture_dir: str | os.PathLike[str] | None = None, evidence: str | os.PathLike[str] | None = None, codex_home: str | os.PathLike[str] | None = None, skills_home: str | os.PathLike[str] | None = None, desktop_version: str | None = None, runtime_version: str | None = None, thread_id: str | None = None) -> dict[str, Any]:
-    if prepare == bool(evidence):
-        raise ValueError("choose exactly one of --prepare or --evaluate PATH")
+def run_verify_desktop(*, prepare: bool = False, fixture_dir: str | os.PathLike[str] | None = None, evidence: str | os.PathLike[str] | None = None, codex_home: str | os.PathLike[str] | None = None, skills_home: str | os.PathLike[str] | None = None, desktop_version: str | None = None, runtime_version: str | None = None, thread_id: str | None = None, control_thread_id: str | None = None, check_probes: str | os.PathLike[str] | None = None) -> dict[str, Any]:
+    if sum((prepare, bool(evidence), bool(check_probes))) != 1:
+        raise ValueError("choose exactly one of --prepare, --check-probes PATH or --evaluate PATH")
+    if check_probes:
+        return validate_probe_plan(check_probes)
     if prepare:
         return prepare_desktop_fixture(fixture_dir, codex_home=codex_home, skills_home=skills_home)
-    return evaluate_desktop_evidence(evidence, desktop_version=desktop_version, runtime_version=runtime_version, thread_id=thread_id)  # type: ignore[arg-type]
+    return evaluate_desktop_evidence(evidence, desktop_version=desktop_version, runtime_version=runtime_version, thread_id=thread_id, control_thread_id=control_thread_id)  # type: ignore[arg-type]
 
 
 __all__ = ["evaluate_desktop_evidence", "prepare_desktop_fixture", "run_verify_desktop"]

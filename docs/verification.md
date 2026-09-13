@@ -3,6 +3,52 @@
 This is a dated campaign record. It reports observed checks and their limits; an
 unexecuted check is not represented as a pass.
 
+## Acceptance-harness correction — 2026-09-13 UTC
+
+Started from clean `codex/desktop-first` at
+`cb52309fe4bcd49a5b6bf6f4d8b41ab4a4964363`, matching the remote. Development was
+performed directly in the main task without activating `$oh-my-codex`, delegating,
+changing live installation assets, or running live acceptance probes. Architecture,
+role prompts, model/effort/sandbox assignments and explicit activation policy remain
+byte-identical to the starting commit.
+
+Schema 4 adds a canonical harness-owned probe manifest, read-only pre-dispatch gate,
+exact canary bytes, reported-path checks, and a separately identified ordinary-thread
+control. Fresh final acceptance requires control PASS and probe-boundary PASS alongside
+core/behavioral PASS. Current Codex host sandbox inheritance remains a host limitation;
+exhaustive filesystem auditing is not claimed. See the two exact prompt procedures in
+[Desktop acceptance](desktop-smoke.md).
+
+The latest user-reported Desktop run against `cb52309…` remains **FAIL**: Librarian's
+outside-fixture diagnostic write violated the procedure, and the independent no-skill
+control was unverified. Its successful ordinary orchestration and broader inherited
+permissions do not erase that failure. No historical evidence was rewritten or promoted
+to fresh acceptance. Final schema-4 live Desktop acceptance remains **UNVERIFIED** until
+the deliberate update and two separate fresh threads are completed.
+
+Validation for this correction:
+
+- Python 3.11.16: **135 tests passed**; Python 3.12.14: **135 tests passed**.
+  The 50 Desktop tests include 24 new regression tests; prior tests remain covered.
+- Source compilation and whitespace checks passed; the full source/test/docs diff was
+  reviewed directly. Six files changed; role/skill/policy assets are unchanged.
+- Wheel and source distribution built in an isolated source copy. Eight package
+  code/asset files matched byte-for-byte, and legal notices were present. The wheel
+  installed into a temporary venv with spaces in its path; all 50 Desktop evaluator
+  tests passed against that installed package.
+- Isolated lifecycle: install 6, repeat install 0, upgrade 1 with 1 backup, uninstall 6,
+  repeat uninstall 0, reinstall 6, final uninstall 6. Config/global-instruction sentinels
+  stayed byte-identical. Doctor **PASS WITH NOTES** (static evidence only).
+- Packaged fixture preparation and preflight passed; unrun control remained UNVERIFIED.
+  The 17-file live installation/configuration snapshot remained unchanged.
+- Local validation artifacts are retained under
+  `/private/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc acceptance hardening cxodevlq/`.
+  These results do not claim hosted CI or fresh Desktop runtime acceptance.
+
+Commit/push identity and generated final prompt paths are reported in the task's final
+response. No merge, tag, release, package publication, live update, or live activation
+is part of this correction.
+
 ## Readiness finalization — 2026-09-12 (2026-09-13 UTC)
 
 Started on `codex/desktop-first` at
