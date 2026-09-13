@@ -43,22 +43,64 @@ def ensure_supported_python() -> None:
         raise SystemExit(f"Oh-My-Codex requires Python 3.11+; bootstrap is running under {version}")
 
 
-def ensure_venv(venv_dir: Path) -> Path:
-    python = venv_python(venv_dir)
-    if python.is_file():
-        probe = subprocess.run(
-            [str(python), "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"],
+def _probe(args: list[str]) -> bool:
+    try:
+        result = subprocess.run(
+            args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        if probe.returncode == 0:
-            return python
-        shutil.rmtree(venv_dir)
-    venv_dir.parent.mkdir(parents=True, exist_ok=True)
-    venv.EnvBuilder(with_pip=True).create(venv_dir)
-    python = venv_python(venv_dir)
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
+def venv_is_usable(python: Path) -> bool:
     if not python.is_file():
-        raise SystemExit(f"bootstrap could not create tooling Python at {python}")
+        return False
+    return _probe([
+        str(python),
+        "-c",
+        "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)",
+    ]) and _probe([str(python), "-m", "pip", "--version"])
+
+
+def new_venv_builder() -> venv.EnvBuilder:
+    # POSIX `python -m venv` defaults to symlinking the base interpreter. Match
+    # that behavior here instead of EnvBuilder's copy-by-default API semantics.
+    # Copying some standalone/uv-managed Python builds can leave the nested
+    # interpreter unable to run ensurepip.
+    return venv.EnvBuilder(with_pip=True, symlinks=os.name != "nt")
+
+
+def _remove_venv_dir(venv_dir: Path) -> None:
+    if venv_dir.is_symlink() or venv_dir.is_file():
+        venv_dir.unlink(missing_ok=True)
+    elif venv_dir.exists():
+        shutil.rmtree(venv_dir)
+
+
+def ensure_venv(venv_dir: Path) -> Path:
+    python = venv_python(venv_dir)
+    if not venv_dir.is_symlink() and venv_is_usable(python):
+        return python
+
+    if venv_dir.exists() or venv_dir.is_symlink():
+        _remove_venv_dir(venv_dir)
+
+    venv_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        new_venv_builder().create(venv_dir)
+    except Exception:
+        # EnvBuilder may leave a partially-created environment behind when
+        # ensurepip fails. Remove it so the next bootstrap starts cleanly.
+        _remove_venv_dir(venv_dir)
+        raise
+
+    python = venv_python(venv_dir)
+    if not venv_is_usable(python):
+        _remove_venv_dir(venv_dir)
+        raise SystemExit(f"bootstrap could not create a usable tooling environment at {venv_dir}")
     return python
 
 

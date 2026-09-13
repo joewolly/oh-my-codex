@@ -19,3 +19,21 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+
+  uv-bootstrap-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install uv-managed Python 3.11
+        run: uv python install 3.11
+      - name: Bootstrap twice with uv-managed Python
+        shell: bash
+        run: |
+          export PYTHON="$(uv python find 3.11)"
+          VENV_DIR="$RUNNER_TEMP/omc uv tooling venv"
+          CODEX_HOME="$RUNNER_TEMP/codex home"
+          SKILLS_HOME="$RUNNER_TEMP/skills home"
+          bash install.sh --venv-dir "$VENV_DIR" --codex-home "$CODEX_HOME" --skills-home "$SKILLS_HOME"
+          "$VENV_DIR/bin/python" -m pip --version
+          bash install.sh --venv-dir "$VENV_DIR" --codex-home "$CODEX_HOME" --skills-home "$SKILLS_HOME"
