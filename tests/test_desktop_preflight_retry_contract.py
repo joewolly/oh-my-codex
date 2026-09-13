@@ -31,7 +31,7 @@ class DesktopPreflightRetryContractTests(unittest.TestCase):
         """Keep helper and canary path roles unambiguous in the generated prompt."""
         prompt = self._prompt()
         flat = self._flat(prompt)
-        expected_helper = str(Path("/fixture") / ".omc-probe-preflight.py")
+        expected_helper = desktop._core._command_path_argument(Path("/fixture") / ".omc-probe-preflight.py")
         self.assertIn("PREFLIGHT COPY-SAFETY CONTRACT", prompt)
         self.assertIn(expected_helper, prompt)
         self.assertIn("MUST NEVER be used as the preflight helper argument", flat)
