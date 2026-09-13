@@ -80,7 +80,7 @@ function Copy-Prompt([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Prepared prompt is missing: $Path"
     }
-    Get-Content -LiteralPath $Path -Raw | Set-Clipboard
+    Set-Clipboard -Value (Get-Content -LiteralPath $Path -Raw)
 }
 
 function Require-Value([string]$Value, [string]$Prompt) {

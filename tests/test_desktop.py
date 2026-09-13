@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import shlex
 import subprocess
 import sys
@@ -78,6 +79,18 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         self.assertEqual(args[1:4], ["-I", "-S", "-c"])
         self.assertEqual(args[-2], str(self.root / ".omc-probe-preflight.py"))
         self.assertEqual(self._run_gate().returncode, 0)
+
+    def test_prompt_hash_offset_reconstructs_exact_pinned_prompt(self) -> None:
+        baseline = json.loads((self.root / "fixture-baseline.json").read_text(encoding="utf-8"))
+        binding = desktop_core._helper_binding(self.root, self.metadata, baseline)
+        template = binding["prompt_template"]
+        offset = binding["prompt_hash_offset"]
+        token = desktop_core.desktop_preflight.HASH_TOKEN
+        self.assertEqual(template[offset:offset + len(token)], token)
+        command = desktop_core._preflight_command(self.root, token)
+        self.assertEqual(command.count(token), 1)
+        reconstructed = template[:offset] + self.metadata["preflight_sha256"] + template[offset + len(token):]
+        self.assertEqual(reconstructed, (self.root / "desktop-prompt.txt").read_text(encoding="utf-8"))
 
     def test_exact_retained_prompt_uses_bound_interpreter_without_package_import(self) -> None:
         prepared, command = self._retained_prompt_command()

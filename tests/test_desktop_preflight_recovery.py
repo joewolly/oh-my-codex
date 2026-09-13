@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -11,6 +10,7 @@ import unittest
 from pathlib import Path
 
 import oh_my_codex
+from oh_my_codex import desktop_core
 from oh_my_codex.desktop import prepare_desktop_fixture
 
 
@@ -39,7 +39,11 @@ class DesktopPreflightRecoveryTests(unittest.TestCase):
             skills_home=self.skills,
         )
         self.root = Path(self.prepared["fixture"])
-        self.canonical = shlex.split(self.prepared["preflight_command"])
+        self.canonical = desktop_core._preflight_argv(
+            self.root,
+            self.prepared["preflight_sha256"],
+            executable=str(Path(sys.executable).expanduser().absolute()),
+        )
 
     def tearDown(self) -> None:
         self.temp.cleanup()

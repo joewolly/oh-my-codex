@@ -47,4 +47,8 @@ jobs:
           python-version: '3.12'
       - name: Install and exercise Windows Desktop wrapper
         shell: powershell
-        run: .\tests\windows_verify_desktop.ps1
+        run: |
+          $env:PYTHON = (Get-Command python).Source
+          $env:OMC_EXPECTED_PYTHON = '3.12'
+          python --version
+          .\tests\windows_verify_desktop.ps1

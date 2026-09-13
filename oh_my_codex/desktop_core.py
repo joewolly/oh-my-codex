@@ -61,6 +61,12 @@ def _powershell_quote(argument: str) -> str:
     return "'" + argument.replace("'", "''") + "'"
 
 
+def _serialize_shell_argument(argument: str, *, windows: bool | None = None) -> str:
+    if windows is None:
+        windows = os.name == "nt"
+    return _powershell_quote(argument) if windows else shlex.quote(argument)
+
+
 def _serialize_shell_argv(args: list[str], *, windows: bool | None = None) -> str:
     """Serialize argv for the host shell without changing argument semantics."""
     if windows is None:
@@ -68,8 +74,8 @@ def _serialize_shell_argv(args: list[str], *, windows: bool | None = None) -> st
     if windows:
         if not args:
             raise ValueError("cannot serialize an empty PowerShell command")
-        return "& " + " ".join(_powershell_quote(argument) for argument in args)
-    return shlex.join(args)
+        return "& " + " ".join(_serialize_shell_argument(argument, windows=True) for argument in args)
+    return " ".join(_serialize_shell_argument(argument, windows=False) for argument in args)
 
 
 def _preflight_argv(root: Path, helper_sha: str, *, executable: str = "python3") -> list[str]:
@@ -95,13 +101,25 @@ def _preflight_command(root: Path, helper_sha: str) -> str:
 
 def _helper_binding(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any]:
     prompt = _desktop_prompt(root, root / _EVIDENCE, desktop_preflight.HASH_TOKEN)
+    args = _preflight_argv(root, desktop_preflight.HASH_TOKEN)
+    if args.count(desktop_preflight.HASH_TOKEN) != 1 or args[-1] != desktop_preflight.HASH_TOKEN:
+        raise ValueError("canonical preflight argv must contain exactly one final hash token")
     command = _preflight_command(root, desktop_preflight.HASH_TOKEN)
+    if prompt.count(command) != 1:
+        raise ValueError("Desktop prompt must contain exactly one canonical preflight command")
+    serialized_hash = _serialize_shell_argument(desktop_preflight.HASH_TOKEN)
+    if not command.endswith(serialized_hash) or serialized_hash.count(desktop_preflight.HASH_TOKEN) != 1:
+        raise ValueError("canonical preflight command must end with one serialized hash argument")
+    token_offset = len(command) - len(serialized_hash) + serialized_hash.index(desktop_preflight.HASH_TOKEN)
+    prompt_hash_offset = prompt.index(command) + token_offset
+    if prompt[prompt_hash_offset:prompt_hash_offset + len(desktop_preflight.HASH_TOKEN)] != desktop_preflight.HASH_TOKEN:
+        raise ValueError("Desktop prompt hash-token offset is inconsistent")
     return {
         "metadata": {key: value for key, value in metadata.items() if key != "preflight_sha256"},
         "baseline": dict(baseline),
         "installed_paths": {key: str(path) for key, path in _asset_paths(Path(metadata["codex_home"]), Path(metadata["skills_home"])).items() if key.startswith("installed")},
         "prompt_template": prompt,
-        "prompt_hash_offset": prompt.index(command) + len(command) - len(desktop_preflight.HASH_TOKEN),
+        "prompt_hash_offset": prompt_hash_offset,
         "control_prompt": _control_prompt(),
     }
 

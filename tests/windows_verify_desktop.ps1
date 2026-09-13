@@ -11,11 +11,11 @@ $TestRoot = Join-Path $env:RUNNER_TEMP ("omc windows wrapper {0}" -f [guid]::New
 $env:LOCALAPPDATA = Join-Path $TestRoot 'local app data'
 Remove-Item Env:PIP_NO_CACHE_DIR -ErrorAction SilentlyContinue
 
-$script:ClipboardText = ''
+$global:OmcWindowsCiClipboardText = ''
 function global:Set-Clipboard {
     [CmdletBinding()]
-    param([Parameter(ValueFromPipeline = $true)][string]$Value)
-    process { $script:ClipboardText = $Value }
+    param([string]$Value)
+    $global:OmcWindowsCiClipboardText = $Value
 }
 
 try {
@@ -23,6 +23,9 @@ try {
     $PowerShellExe = (Get-Process -Id $PID).Path
     & $PowerShellExe -NoProfile -NonInteractive -File (Join-Path $RepoRoot 'install.ps1')
     Assert-True ($LASTEXITCODE -eq 0) 'install.ps1 must succeed without PIP_NO_CACHE_DIR'
+    $ToolingPython = Join-Path $env:LOCALAPPDATA 'Oh-My-Codex\venv\Scripts\python.exe'
+    $ToolingVersion = & $ToolingPython -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+    Assert-True ($ToolingVersion -eq $env:OMC_EXPECTED_PYTHON) 'bootstrap must use the setup-python interpreter selected by CI'
 
     $Wrapper = Join-Path $RepoRoot 'verify-desktop.ps1'
     $first = & $Wrapper
@@ -30,7 +33,7 @@ try {
     Assert-True (Test-Path -LiteralPath $StatePath -PathType Leaf) 'preparation must create pending state'
     $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
     Assert-True ($state.stage -eq 'awaiting-control') 'first run must await the control thread'
-    Assert-True ($script:ClipboardText -eq (Get-Content -LiteralPath $state.control_prompt -Raw)) 'first run must copy the exact control prompt'
+    Assert-True ($global:OmcWindowsCiClipboardText -eq (Get-Content -LiteralPath $state.control_prompt -Raw)) 'first run must copy the exact control prompt'
     Assert-True (($first -join "`n") -match 'STEP 1 - CONTROL THREAD') 'first run must print concise control guidance'
 
     $canonical = @(Get-Content -LiteralPath $state.desktop_prompt | Where-Object {
@@ -41,7 +44,7 @@ try {
     Assert-True ($LASTEXITCODE -eq 0) 'exact retained command must execute through PowerShell unchanged'
     Assert-True ($canonical[0] -match [regex]::Escape($env:LOCALAPPDATA)) 'retained executable path must exercise spaces'
 
-    $script:ClipboardText = ''
+    $global:OmcWindowsCiClipboardText = ''
     $second = & $Wrapper `
         -ControlThreadId 'control-thread-windows' `
         -DesktopVersion 'desktop-test-version' `
@@ -52,7 +55,7 @@ try {
     Assert-True ($state2.run_id -eq $state.run_id) 'second stage must not replace or mix the prepared run'
     Assert-True ($state2.fixture -eq $state.fixture) 'second stage must retain the exact fixture'
     Assert-True ($state2.stage -eq 'awaiting-activated') 'second run must advance to activated thread'
-    Assert-True ($script:ClipboardText -eq (Get-Content -LiteralPath $state2.desktop_prompt -Raw)) 'second run must copy the exact activated prompt'
+    Assert-True ($global:OmcWindowsCiClipboardText -eq (Get-Content -LiteralPath $state2.desktop_prompt -Raw)) 'second run must copy the exact activated prompt'
     Assert-True (($second -join "`n") -match 'STEP 2 - ACTIVATED THREAD') 'second run must print concise activated guidance'
 
     $third = & $Wrapper
@@ -69,4 +72,5 @@ try {
 }
 finally {
     Remove-Item Function:\Set-Clipboard -ErrorAction SilentlyContinue
+    Remove-Variable -Name OmcWindowsCiClipboardText -Scope Global -ErrorAction SilentlyContinue
 }
