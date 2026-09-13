@@ -45,6 +45,22 @@ def _preflight_command(root: Path, helper_sha: str) -> str:
 def _desktop_prompt(root: Path, evidence_path: Path, helper_sha: str | None = None) -> str:
     """Append the evaluator's exact machine-enforced evidence vocabulary."""
     prompt = _original_desktop_prompt(root, evidence_path, helper_sha)
+    prompt = prompt.replace(
+        "If it exits nonzero, STOP before spawning any specialist or writing probes/source.",
+        "If the CANONICAL retained preflight command exits nonzero, STOP before spawning any specialist or "
+        "writing probes/source. A different command is a transcription error, not the gate; follow the "
+        "copy-safety contract below.",
+        1,
+    )
+    prompt = prompt.replace(
+        "Record observed_probe_paths as a list of all probe paths seen in tool traces/receipts,\n"
+        "including alternate/outside paths. Any alternate path fails this run even if later\n"
+        "corrected.",
+        "Record observed_probe_paths as diagnostic probe-write TARGET paths actually attempted.\n"
+        "Do not add paths merely read, listed, mentioned, or discovered during inspection. Any\n"
+        "actual alternate/outside probe-write target fails this run even if later corrected.",
+        1,
+    )
     plan = _core._probe_plan(root)
     exact_paths = "\n".join(
         f"  - {role}: {row['path']}"
