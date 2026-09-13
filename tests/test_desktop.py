@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import os
 import json
+import re
 import shlex
 import subprocess
 import sys
 import shutil
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from desktop_suite import DesktopVerificationTests as _DesktopVerificationTests
 from oh_my_codex import desktop_core
@@ -77,7 +78,9 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         self.assertTrue(Path(args[0]).is_absolute())
         self.assertEqual(Path(args[0]), Path(sys.executable).expanduser().absolute())
         self.assertEqual(args[1:4], ["-I", "-S", "-c"])
-        self.assertEqual(args[-2], str(self.root / ".omc-probe-preflight.py"))
+        self.assertEqual(Path(args[-2]), self.root / ".omc-probe-preflight.py")
+        if os.name == "nt":
+            self.assertTrue(args[-2].endswith("/.omc-probe-preflight.py"))
         self.assertEqual(self._run_gate().returncode, 0)
 
     def test_prompt_hash_offset_reconstructs_exact_pinned_prompt(self) -> None:
@@ -105,7 +108,10 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         ) if os.name == "nt" else shlex.split(command)
         self.assertEqual(Path(args[0]), Path(sys.executable).expanduser().absolute())
         self.assertEqual(args[1:4], ["-I", "-S", "-c"])
-        self.assertEqual(args[5:], [prepared["preflight"], prepared["preflight_sha256"]])
+        self.assertEqual(Path(args[5]), Path(prepared["preflight"]))
+        self.assertEqual(args[6], prepared["preflight_sha256"])
+        if os.name == "nt":
+            self.assertTrue(args[5].endswith("/.omc-probe-preflight.py"))
         self.assertIn(" ", args[5])
         result = self._run_prompt_command(command)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
@@ -115,7 +121,7 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         args = self._gate_command()
         self.assertEqual(Path(args[0]), Path(sys.executable).expanduser().absolute())
         self.assertEqual(args[1:4], ["-I", "-S", "-c"])
-        self.assertIn(str(self.root / ".omc-probe-preflight.py"), prompt)
+        self.assertIn(desktop_core._command_path_argument(self.root / ".omc-probe-preflight.py"), prompt)
         self.assertIn(self.metadata["preflight_sha256"], prompt)
         self.assertNotIn("-m oh_my_codex", prompt)
         self.assertIn("Do not improvise an alternate gate", prompt)
@@ -172,6 +178,17 @@ class DesktopVerificationTests(_DesktopVerificationTests):
             "& 'C:\\Users\\Test User\\O''Brien\\python.exe' '-I' '-S' '-c' "
             "'print(''ok'')' 'C:\\Users\\Test User\\O''Brien\\.omc-probe-preflight.py' 'abc123'",
         )
+
+    def test_windows_preflight_argv_uses_markdown_safe_filesystem_paths(self) -> None:
+        executable = r"C:\Users\Test User\OMC\venv\Scripts\python.exe"
+        root = Path(r"C:\Users\Test User\Temp\omc-desktop-smoke-live")
+        args = desktop_core._preflight_argv(root, "abc123", executable=executable, windows=True)
+        self.assertEqual(args[0], "C:/Users/Test User/OMC/venv/Scripts/python.exe")
+        self.assertEqual(args[-2], "C:/Users/Test User/Temp/omc-desktop-smoke-live/.omc-probe-preflight.py")
+        self.assertEqual(PureWindowsPath(args[-2]), PureWindowsPath(str(root)) / ".omc-probe-preflight.py")
+        self.assertNotIn(r"\.omc-probe-preflight.py", args[-2])
+        command = desktop_core._serialize_shell_argv(args, windows=True)
+        self.assertEqual(re.sub(r"\\(?=[.])", "", command), command)
 
     @unittest.skipUnless(os.name == "nt", "literal retained PowerShell execution is Windows-only")
     def test_exact_retained_command_executes_through_powershell_unchanged(self) -> None:

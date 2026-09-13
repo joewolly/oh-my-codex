@@ -61,10 +61,10 @@ def _desktop_prompt(root: Path, evidence_path: Path, helper_sha: str | None = No
     )
     plan = _core._probe_plan(root)
     exact_paths = "\n".join(
-        f"  - {role}: {row['path']}"
+        f"  - {role}: {json.dumps(row['path'])}"
         for role, row in plan.items()
     )
-    canonical_helper = root / _preflight.HELPER
+    canonical_helper = _core._command_path_argument(root / _preflight.HELPER)
     return prompt + f"""
 
 PREFLIGHT COPY-SAFETY CONTRACT

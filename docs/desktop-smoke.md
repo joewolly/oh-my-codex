@@ -33,6 +33,11 @@ The wrapper stores only small pending-run state under
 ID, fixture, preparation timestamp, package version, baseline, and managed-asset
 fingerprints. A missing, expired, mismatched, or canonically failed run cannot be reused.
 `-Reset` archives wrapper state but never deletes the forensic fixture.
+Before acting on either pending stage, the wrapper compares the currently installed
+OMC-managed package/assets with the pending preparation. If an install or upgrade changed
+them, it automatically archives the stale wrapper state, preserves its forensic fixture,
+prepares a fresh run, copies the new control prompt, and prints STEP 1. A canonical gate
+failure under the same installed build remains terminal and is never retried.
 
 If Windows blocks a downloaded script, use `Unblock-File` for the affected checkout
 scripts or a process-scoped execution policy for that one PowerShell session. A permanent
@@ -63,8 +68,14 @@ package/evaluator or Oh-My-Codex-managed installed-asset change. User-owned
 
 On Windows, argv is deliberately serialized for PowerShell: every argument is
 single-quoted, embedded apostrophes are doubled, and the absolute executable is invoked
-with the call operator (`& 'C:\path with spaces\python.exe' '-I' '-S' ...`). macOS/Linux
-retain the existing POSIX representation.
+with the call operator. The preparation interpreter and canonical dotfile-helper argv
+elements use forward-slash Windows spelling (for example,
+`& 'C:/path with spaces/python.exe' ... 'C:/fixture/.omc-probe-preflight.py'`) so the
+retained Desktop/Markdown text contains no lossy backslash-before-dot boundary. Python,
+Windows PowerShell, and `pwsh` accept that spelling. Canary and Fixer paths remain native
+evaluator values; their executable prompt occurrences are JSON string literals whose
+backslashes are doubled, so they do not expose the raw `\.` boundary. macOS/Linux retain
+the existing POSIX representation.
 
 Keep the returned preparation output and generated prompt as the trust anchor. Do not
 relocate the prepared fixture or rewrite its prompt/helper/metadata.

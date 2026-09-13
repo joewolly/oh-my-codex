@@ -78,7 +78,25 @@ def _serialize_shell_argv(args: list[str], *, windows: bool | None = None) -> st
     return " ".join(_serialize_shell_argument(argument, windows=False) for argument in args)
 
 
-def _preflight_argv(root: Path, helper_sha: str, *, executable: str = "python3") -> list[str]:
+def _command_path_argument(path: str | os.PathLike[str], *, windows: bool | None = None) -> str:
+    """Spell one filesystem argv element safely for the retained Desktop command."""
+    if windows is None:
+        windows = os.name == "nt"
+    value = Path(path)
+    if not windows:
+        return str(value)
+    # This conversion is deliberately scoped to a filesystem argv element. It
+    # never rewrites launcher source, hashes, quoting, or the complete command.
+    return value.as_posix() if os.name == "nt" else str(value).replace("\\", "/")
+
+
+def _preflight_argv(
+    root: Path,
+    helper_sha: str,
+    *,
+    executable: str = "python3",
+    windows: bool | None = None,
+) -> list[str]:
     # This literal hash is retained in the preparation-time prompt, outside the
     # writable fixture. Execute the SAME bytes we hashed, never reopen as code.
     launcher = ("import hashlib,json,pathlib,stat,sys; "
@@ -95,9 +113,16 @@ def _preflight_argv(root: Path, helper_sha: str, *, executable: str = "python3")
     # double quotes from argv values. A Python single-quoted Base64 literal is
     # semantically identical and survives both Windows PowerShell and pwsh.
     # Retain the existing POSIX payload byte-for-byte.
-    wrapper = (f"import base64;exec(base64.b64decode('{encoded}'))" if os.name == "nt"
+    if windows is None:
+        windows = os.name == "nt"
+    wrapper = (f"import base64;exec(base64.b64decode('{encoded}'))" if windows
                else f'import base64;exec(base64.b64decode("{encoded}"))')
-    return [executable, "-I", "-S", "-c", wrapper, str(root / desktop_preflight.HELPER), helper_sha]
+    return [
+        _command_path_argument(executable, windows=windows),
+        "-I", "-S", "-c", wrapper,
+        _command_path_argument(root / desktop_preflight.HELPER, windows=windows),
+        helper_sha,
+    ]
 
 
 def _preflight_command(root: Path, helper_sha: str) -> str:
