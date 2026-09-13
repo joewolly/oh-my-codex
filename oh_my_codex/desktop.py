@@ -1,11 +1,14 @@
 """Public facade for guided Codex Desktop verification.
 
 The implementation remains in :mod:`desktop_core`; this facade narrows immutable
-fingerprinting to Oh-My-Codex-owned assets and validates user-owned Codex config
-semantically so benign Desktop rewrites do not invalidate acceptance.
+fingerprinting to Oh-My-Codex-owned assets, validates user-owned Codex config
+semantically, and binds standalone Desktop preflight to the exact Python 3.11+
+interpreter used for preparation.
 """
 from __future__ import annotations
 
+import shlex
+import sys
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -20,12 +23,20 @@ _asset_paths = _core._asset_paths
 _original_asset_fingerprints = _core._asset_fingerprints
 _original_helper_binding = _core._helper_binding
 _original_installed_contracts = _core._installed_contracts
+_original_preflight_command = _core._preflight_command
 
 
 def _asset_fingerprints(codex_home: Path | None = None, skills_home: Path | None = None) -> dict[str, str]:
     fingerprints = _original_asset_fingerprints(codex_home, skills_home)
     fingerprints.pop("installed-config", None)
     return fingerprints
+
+
+def _preflight_command(root: Path, helper_sha: str) -> str:
+    """Bind the gate to the preparation interpreter instead of ambient PATH."""
+    args = shlex.split(_original_preflight_command(root, helper_sha))
+    args[0] = str(Path(sys.executable).expanduser().absolute())
+    return shlex.join(args)
 
 
 def _helper_binding(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any]:
@@ -47,6 +58,7 @@ def _sync_core() -> None:
     # Tests and callers may temporarily replace these facade seams. Keep the
     # implementation module synchronized so those supported seams remain honest.
     _core._asset_fingerprints = _asset_fingerprints
+    _core._preflight_command = _preflight_command
     _core._helper_binding = _helper_binding
     _core._installed_contracts = _installed_contracts
 
