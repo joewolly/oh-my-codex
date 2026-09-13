@@ -7,6 +7,7 @@ interpreter used for preparation, and makes the generated evidence contract expl
 """
 from __future__ import annotations
 
+import json
 import shlex
 import sys
 from pathlib import Path
@@ -25,6 +26,7 @@ _original_helper_binding = _core._helper_binding
 _original_installed_contracts = _core._installed_contracts
 _original_preflight_command = _core._preflight_command
 _original_desktop_prompt = _core._desktop_prompt
+_original_evaluate_desktop_evidence = _core.evaluate_desktop_evidence
 
 
 def _asset_fingerprints(codex_home: Path | None = None, skills_home: Path | None = None) -> dict[str, str]:
@@ -52,8 +54,9 @@ def _desktop_prompt(root: Path, evidence_path: Path, helper_sha: str | None = No
 
 MACHINE-ENFORCED EVIDENCE VALUE CONTRACT
 
-The evaluator compares the following values literally. Do not replace an enum or path
-with explanatory prose. Put explanations only in `host_limitation_detail` or `notes`.
+The evaluator compares the following values literally. Do not replace an enum, path,
+or structured object with explanatory prose. Put explanations only in
+`host_limitation_detail` or `notes`.
 
 `observed_probe_paths` means diagnostic PROBE-WRITE TARGETS ACTUALLY ATTEMPTED by the
 four specialists, whether the write succeeded or was denied. Include each canonical
@@ -80,6 +83,46 @@ For every role record these fields exactly:
   `danger-full-access`.
 - `host_override_evidence`: exactly `IGNORED_OVERRIDE`, `REJECTED_OVERRIDE`,
   `INHERITED_PARENT`, or `UNVERIFIED`.
+- `observed_model`: use the exact host-observed model id only when current Desktop
+  UI/tool/trace evidence exposes it. Expected ids are `gpt-5.6-luna` for Explorer,
+  Librarian, and Fixer, and `gpt-5.6-sol` for Oracle. If the current Desktop surface
+  does not expose the child model, record exactly `UNVERIFIED`; do NOT copy
+  `configured_model` into this field. The evaluator treats unobservable child model
+  metadata as a note, but an actually observed wrong model remains a core failure.
+- `observed_effort`: exactly `medium`, `high`, `INFERRED`, or `UNVERIFIED` as supported
+  by current evidence. Do not copy configured effort into observed effort without an
+  observation.
+- `implementation`: exactly `BOUNDED` for Fixer and exactly `NONE` for Explorer,
+  Librarian, and Oracle. The authorized diagnostic canary does not count as normal
+  implementation work.
+
+Role-specific semantic evidence is also literal:
+- Explorer: `repository_work="VERIFIED"` and `repository_fact` must be exactly
+  `repository fact: preserve this file` (a single trailing newline is also accepted).
+- Librarian: `external_research="VERIFIED"`, `source_url` must resolve to
+  `https://docs.python.org/3/library/statistics.html`, and `research_finding` must state
+  that the empty-data contract raises `StatisticsError`.
+- Fixer: set `validation_status="VERIFIED"` only after the required test command passes.
+  `receipt` MUST be a structured object, never the string `VERIFIED`, with all of:
+  `task` (non-empty string), `status="completed"`, `files` containing `target.py`,
+  `validation` containing at least one object with
+  `command="python3 -B -m unittest -v test_target.py"` (or the same command with another
+  Python executable name) and `result="PASS"`, plus list-valued `deviations` and
+  `unresolved_risks`.
+- Oracle: `review_status="VERIFIED"` means the independent review was actually
+  completed. `review_result` is the verdict on the repaired Fixer target and must be
+  `PASS` or `PASS WITH NOTES` when that target is correct. Separately record the planted
+  unchanged defect with `planted_verdict="FAIL"` and a STRUCTURED `planted_finding`
+  object exactly identifying `file="review_target.py"`, `function="average"`,
+  `input={{"values": []}}`, `expected=0` (or `"return 0"`), and an `observed` value
+  containing `ZeroDivisionError`. Do not collapse these fields into prose and do not
+  use the planted defect's FAIL as Oracle's `review_status` or repaired-target
+  `review_result`.
+
+Top-level semantic observations must remain separate from role verdicts:
+- `receipt_observed`: true only when the structured Fixer receipt was actually observed.
+- `oracle_review_observed`: true only when Oracle's independent review was observed.
+- `oracle_review_result`: `PASS` or `PASS WITH NOTES` for the repaired Fixer target.
 
 Parent/host fields are also literal:
 - `parent_effective_sandbox`: exactly `read-only`, `workspace-write`,
@@ -120,6 +163,79 @@ def _installed_contracts(codex_home: Path, skills_home: Path) -> tuple[bool, str
     return _original_installed_contracts(codex_home, skills_home)
 
 
+def _adjust_unobservable_role_models(report: dict[str, Any], evidence_path: str | Path) -> dict[str, Any]:
+    """Downgrade missing Desktop child-model telemetry to notes, never mismatches."""
+    try:
+        evidence = json.loads(Path(evidence_path).expanduser().absolute().read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return report
+    roles = evidence.get("roles")
+    checks = report.get("checks")
+    if not isinstance(roles, Mapping) or not isinstance(checks, list):
+        return report
+
+    by_name = {row.get("name"): row for row in checks if isinstance(row, dict)}
+    role_specific = {
+        "omc_explorer": ("explorer-behavior",),
+        "omc_librarian": ("librarian-behavior",),
+        "omc_fixer": ("fixer-implementation", "fixer-receipt"),
+        "omc_oracle": ("oracle-behavior", "oracle-verdict"),
+    }
+    adjusted = False
+    for role, expected in ROLE_CONTRACTS.items():
+        row = roles.get(role)
+        if not isinstance(row, Mapping) or row.get("configured_model") != expected["model"]:
+            continue
+        observed = row.get("observed_model")
+        if observed not in ("UNVERIFIED", "INFERRED"):
+            continue
+        model_check = by_name.get(f"model:{role}")
+        if isinstance(model_check, dict) and model_check.get("status") == "FAILED":
+            model_check["status"] = observed
+            model_check["evidence"] = (
+                f"child model metadata {observed.lower()} on this Desktop surface; "
+                f"configured route remains {expected['model']!r}"
+            )
+            adjusted = True
+
+        relevant = [f"discovery:{role}", f"model:{role}", f"effort:{role}", f"behavior:{role}", *role_specific[role]]
+        role_check = by_name.get(f"role:{role}")
+        if isinstance(role_check, dict):
+            failures = [by_name.get(name) for name in relevant]
+            if all(not isinstance(check, dict) or check.get("status") != "FAILED" for check in failures):
+                role_check["status"] = "VERIFIED"
+                role_check["evidence"] = "core role requirements satisfied; unobservable model/effort metadata recorded as notes"
+
+    if not adjusted:
+        return report
+
+    core_rows = [row for row in checks if isinstance(row, dict) and row.get("scope") == "core"]
+    if any(row.get("status") == "FAILED" for row in core_rows):
+        core = "FAIL"
+    elif any(row.get("status") != "VERIFIED" for row in core_rows):
+        core = "PASS WITH NOTES"
+    else:
+        core = "PASS"
+    report["core_orchestration"] = core
+
+    validity = report.get("evidence_validity")
+    activation = report.get("explicit_activation_control")
+    boundary = report.get("probe_boundary_compliance")
+    isolation = report.get("strict_sandbox_isolation")
+    if validity == "PASS" and core != "FAIL" and activation == "PASS" and boundary == "PASS" and isolation not in ("FAIL", "UNVERIFIED"):
+        if isolation == "BLOCKED BY HOST":
+            daily = "PASS WITH HOST LIMITATION"
+        else:
+            note_rows = [row for row in checks if isinstance(row, dict) and row.get("scope") == "notes"]
+            daily = "PASS WITH NOTES" if core == "PASS WITH NOTES" or any(row.get("status") != "VERIFIED" for row in note_rows) else "PASS"
+        report["overall"] = daily
+        report["daily_use_readiness"] = daily
+        report["desktop_verified"] = True
+        if isolation == "BLOCKED BY HOST":
+            report["strict_least_privilege"] = "UNAVAILABLE ON TESTED CODEX HOST"
+    return report
+
+
 def _sync_core() -> None:
     # Tests and callers may temporarily replace these facade seams. Keep the
     # implementation module synchronized so those supported seams remain honest.
@@ -128,6 +244,7 @@ def _sync_core() -> None:
     _core._desktop_prompt = _desktop_prompt
     _core._helper_binding = _helper_binding
     _core._installed_contracts = _installed_contracts
+    _core.evaluate_desktop_evidence = evaluate_desktop_evidence
 
 
 def _helper_bytes(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> bytes:
@@ -140,9 +257,10 @@ def validate_probe_plan(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return _core.validate_probe_plan(*args, **kwargs)
 
 
-def evaluate_desktop_evidence(*args: Any, **kwargs: Any) -> dict[str, Any]:
+def evaluate_desktop_evidence(evidence_path: str | Path, *args: Any, **kwargs: Any) -> dict[str, Any]:
     _sync_core()
-    return _core.evaluate_desktop_evidence(*args, **kwargs)
+    report = _original_evaluate_desktop_evidence(evidence_path, *args, **kwargs)
+    return _adjust_unobservable_role_models(report, evidence_path)
 
 
 def prepare_desktop_fixture(*args: Any, **kwargs: Any) -> dict[str, Any]:
