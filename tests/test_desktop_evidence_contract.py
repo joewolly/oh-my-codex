@@ -100,7 +100,13 @@ class DesktopEvidencePromptContractTests(unittest.TestCase):
 
         evidence["roles"]["omc_explorer"]["observed_model"] = "wrong-model"
         wrong_report = json.loads(json.dumps(report))
-        wrong_report["checks"] = json.loads(json.dumps(checks))
+        for check in wrong_report["checks"]:
+            if check["name"] in ("model:omc_explorer", "role:omc_explorer"):
+                check["status"] = "FAILED"
+        wrong_report["core_orchestration"] = "FAIL"
+        wrong_report["overall"] = "FAIL"
+        wrong_report["daily_use_readiness"] = "FAIL"
+        wrong_report["desktop_verified"] = False
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "evidence.json"
             path.write_text(json.dumps(evidence), encoding="utf-8")
