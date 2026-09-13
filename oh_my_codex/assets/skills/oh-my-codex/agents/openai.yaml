@@ -1,0 +1,6 @@
+interface:
+  display_name: "Oh-My-Codex"
+  short_description: "Bounded, verification-first delegation for Codex"
+  default_prompt: "Use $oh-my-codex to coordinate bounded specialist work with explicit ownership and verification."
+policy:
+  allow_implicit_invocation: false

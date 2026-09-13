@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oh-my-codex"
+version = "1.0.0"
+description = "Safe, additive Codex role and skill installer"
+requires-python = ">=3.11"
+dependencies = []
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+
+[project.scripts]
+oh-my-codex = "oh_my_codex.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["oh_my_codex*"]
+
+[tool.setuptools.package-data]
+oh_my_codex = ["assets/agents/*.toml", "assets/skills/oh-my-codex/SKILL.md", "assets/skills/oh-my-codex/agents/openai.yaml"]
