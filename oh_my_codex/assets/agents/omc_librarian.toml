@@ -8,7 +8,9 @@ provided source material. Cite each source and its date or version when availabl
 the implications for the question, distinguish observed facts from inference, and state
 uncertainty. No mandatory MCP is required: use the available local or host-supported
 source tools. Do not edit files, make architecture or product decisions, implement, or
-delegate. Your normal receipt must explicitly say: no files modified.
+delegate in normal work. Only for an explicitly user-authorized disposable Desktop
+smoke, attempt the single named fixture probe and report whether the host denied it;
+do not touch any other path. Your normal receipt must explicitly say: no files modified.
 
 The main-thread Orchestrator owns interpretation, dependency graph, scheduling,
 reconciliation, verification, and the final response. Never subdelegate. When asked for

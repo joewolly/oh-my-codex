@@ -7,13 +7,49 @@ schema, and retained app-server evidence where available. A successful CLI verif
 can prove the exercised claims on that tested host; it does not prove that Desktop uses
 the same configuration or runtime path.
 
-Observed 2026-09-12: after additive installation, an already-open Desktop task's native
-V2 tool returned `unknown agent_type 'omc_explorer'`. A fresh task or host reload may
-discover newly installed definitions, but this observation does not establish that a
-reload guarantees enforcement. Fresh CLI verification also does not prove behavior in
-that already-open Desktop task.
+Codex Desktop on macOS is Tier 1 and is the authoritative daily-use gate. Windows
+Desktop is Tier 2 and remains runtime-unverified until a Windows Desktop smoke is
+observed. Standalone CLI/app-server is secondary diagnostic evidence. After install or
+reinstall, restart Codex Desktop and start a NEW thread; no hot reload of custom agents
+is promised. Use `verify-desktop --prepare` and the guided procedure in
+[`desktop-smoke.md`](desktop-smoke.md) for the Desktop gate.
 
-The final native V2 run on macOS 26.6.2 arm64 with Codex 0.152.1 was `FAIL`. Its root
+## Current tested Codex host limitation
+
+Desktop `26.908.40834` build `8881`, bundled Codex `0.154.0-alpha.6.2`, macOS
+`26.6.2 (25G83) arm64` applied `danger-full-access` to every specialist. Explorer,
+Librarian, and Oracle adversarial writes succeeded; Fixer's bounded write succeeded.
+The role requests remain read-only / read-only / workspace-write / read-only.
+The recorded workflow demonstrated model/effort routing, repository investigation,
+external research, dependency ordering, reconciliation, main nonimplementation,
+Fixer implementation/receipt, and Oracle independent review/verdict.
+
+This is **behavioral role isolation**, not technical sandbox isolation. The tested
+host retained broader write capability than Oh-My-Codex requested. Core orchestration
+can PASS while strict isolation is BLOCKED BY HOST and daily readiness is
+PASS WITH HOST LIMITATION. Users requiring hard least-privilege separation should not
+use this tested host for that requirement.
+
+Keep strong role instructions, exclusive Fixer implementation ownership, source sandbox
+requests, and adversarial probes. These mitigations do not replace host enforcement.
+No parent-read-only/child-escalation tricks, OS wrappers, or unsupported runtime
+modifications are introduced. Future versions must be retested; the evaluator compares
+configured and observed permissions without hardcoding a version-dependent result.
+
+BLOCKED BY HOST requires valid source and installed configuration, broader observed
+permissions, recorded ignored/rejected override or parent inheritance, and evidence
+that no supported project configuration remedy exists. Wrong project settings are FAIL;
+missing or contradictory runtime/cause evidence is UNVERIFIED.
+
+The old smoke fingerprint is stale for this build. Its observations remain historical
+session evidence, not fresh final acceptance. The user reports subsequent post-restart
+role discovery; the retained original artifact predates that observation and says
+restart was not completed. These records are not silently combined or re-stamped.
+See [verification](verification.md) for provenance and acceptance limits.
+
+## Historical low-level record
+
+The earlier native V2 run on macOS 26.6.2 arm64 with Codex 0.152.1 was `FAIL`. Its root
 was `01a0982b-8114-7401-a595-dc81af445193`; the retained report is
 `/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc-verify-artifacts-3oyft6rs/report.json`
 with `events.jsonl` alongside it. All five turns completed, and bound host execution
@@ -48,23 +84,22 @@ The host can ignore role `sandbox_mode` and `[agents] enabled = false`, so the r
 and writable labels are desired configuration. A prompt cannot enforce read-only
 behavior; the parent session's effective permissions are authoritative. Non-recursion is
 defended by both the configuration request and every specialist's instruction, but the
-absence of observed child delegation does not prove hard prevention. There is no
-read-only write-canary exception, and no supported hard read-only parent with a writable
-child.
+absence of observed child delegation does not prove hard prevention. Normal production
+work has no write-canary exception; the guided Desktop smoke permits one explicitly
+authorized probe per role inside its disposable fixture. A denied prompt or generic
+command error is not a permission observation, and there is no supported hard
+read-only parent with a writable child until Desktop evidence proves it.
 
-Production activation is gated on verified current-host evidence that the main model is
-exactly `gpt-6-astra` or `gpt-5.6-sol`. Model self-claims, role text, and display names
-are insufficient; the skill does not auto-switch or create an Orchestrator child. An
-unsupported or unknown parent model is a production stop. A disposable diagnostic may
-use an explicit `gpt-5.6-sol` parent smoke to measure routing, without authorizing
-production activation.
+The user explicitly selects Astra or Sol and invokes `$oh-my-codex` to activate
+orchestration. Installation does not inject global policy. Record parent-model evidence
+as machine verified, Desktop/user-state verified, inferred, or unverified. Missing
+machine telemetry alone is a note; a known unsupported model is a core failure.
 
 V2 dispatch uses named `agent_type`, semantic `task_name`, and `fork_turns = "none"`.
-V1 dispatch uses only fields accepted by the live schema, including `agent_type` and
-`fork_context = false` where supported. The skill never invents V2 fields for V1. A
-missing named role, wrong model or effort configuration, or unavailable or unverified
-core permission separation is a production stop condition. There is no generic
-model-only fallback.
+V1 uses only the fields accepted by the actual host schema. Missing named roles or
+wrong model/effort routing remain core failures. Unobservable effort adds a note.
+Confirmed host sandbox override blocks strict isolation, independently of core
+orchestration. Standalone CLI/app-server verification stays secondary.
 
 Diagnostic mode can run a disposable fixture smoke to measure broken routing even when
 the production gate would halt. Markers such as `OMC_ROLE_FIXER_V1` and

@@ -64,11 +64,14 @@ class ContractTests(unittest.TestCase):
         self.assertIn("exclusive", skill)
         self.assertIn("allow_implicit_invocation: false", manifest)
 
-    def test_skill_requires_verified_parent_model_before_production_activation(self):
+    def test_skill_distinguishes_parent_observability_and_daily_readiness(self):
         skill = (ROOT / "oh_my_codex/assets/skills/oh-my-codex/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("gpt-6-astra", skill)
         self.assertIn("gpt-5.6-sol", skill)
-        self.assertIn("stop production activation", skill.lower())
+        self.assertIn("DESKTOP", skill.upper())
+        self.assertIn("Desktop/user-state verified", skill)
+        self.assertIn("PASS WITH HOST LIMITATION", skill)
+        self.assertIn("known unsupported model", skill)
         self.assertIn("Do not auto-switch", skill)
         self.assertIn("do not create an Orchestrator child", skill)
         self.assertIn("model's self-claim", skill)

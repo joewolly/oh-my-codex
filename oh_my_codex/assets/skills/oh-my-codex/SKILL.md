@@ -16,17 +16,36 @@ OMC Fixer through a bounded packet. The Orchestrator is conceptually one of five
 but is the user-selected Astra or Sol main thread, not a custom child and never a switched
 model.
 
-## Production activation gate
+## Explicit activation and Desktop readiness
 
-Before production activation, inspect current-host evidence for the main-thread model.
-Continue only when the parent model is exactly `gpt-6-astra` or `gpt-5.6-sol`. Do not
-infer this from a model's self-claim, role text, or display name. Do not auto-switch the
-model and do not create an Orchestrator child. If the model is unsupported or unknown,
-stop production activation and report this exact limitation: `Production activation
-stopped: the current host did not provide verified evidence that the main model is
-gpt-6-astra or gpt-5.6-sol.` An explicit disposable diagnostic may use a
-`gpt-5.6-sol` parent smoke to measure routing, but diagnostic completion never authorizes
-production activation.
+Installation adds discoverable capability; it does not activate orchestration globally.
+Only explicit `$oh-my-codex` invocation activates this contract in the current thread.
+Without invocation, ordinary Codex threads remain ordinary Codex and may implement
+normally. Do not inject this policy into global AGENTS.md or other ordinary threads.
+
+Codex Desktop is the authoritative Tier-1 daily-use surface. Evaluate core orchestration
+separately from strict host-enforced sandbox isolation. A current Desktop report with
+core PASS (or PASS WITH NOTES) and strict isolation BLOCKED BY HOST permits normal
+Desktop use as PASS WITH HOST LIMITATION. Prominently disclose that the tested host
+grants broader write capability than the role configuration requests. Fixer remains
+the only specialist authorized to implement; behavioral compliance is not technical
+write prevention. Strict least-privilege use requires strict isolation PASS.
+
+Use current evidence bound to package/evaluator, installed assets/configuration, OS,
+Desktop/runtime versions, and thread. Stale, malformed, or absent evidence cannot
+qualify fresh final acceptance. A low-level CLI/app-server pass is not Desktop proof;
+a low-level failure does not override valid Desktop core evidence.
+
+The user selects Astra (`gpt-6-astra`) or Sol (`gpt-5.6-sol`) in Desktop. Record parent
+identity as machine verified, Desktop/user-state verified, inferred, or unverified.
+Recorded Desktop model selection suffices when reliable machine metadata is unavailable;
+an observability limitation alone does not block normal daily use. Do not infer identity
+from a model's self-claim, role text, or display name. Do not auto-switch the model and
+do not create an Orchestrator child. A known unsupported model stops orchestration.
+Unknown identity must remain explicitly unverified, never fabricated as machine proof.
+
+The disposable diagnostic fixture measures behavior without activating ordinary work.
+Keep permission probes and desired role sandbox settings so future hosts can be retested.
 
 ## Role contracts
 
@@ -42,9 +61,12 @@ The four actual custom roles are `omc_explorer`, `omc_librarian`, `omc_fixer`, a
   NOTES`, or `FAIL` and remains read-only.
 
 Specialists never subdelegate. Explorer and Librarian receipts state that no files were
-modified. Read-only remains read-only; there is no write-canary exception. The parent
-session's effective permissions remain authoritative, so a role prompt cannot grant a
-capability the host did not grant.
+modified. Read-only remains read-only during normal work; there is no production
+write-canary exception. An explicitly user-authorized disposable Desktop smoke may ask
+each read-only role to attempt one named fixture probe solely to observe effective host
+permissions. That diagnostic exception is limited to the fixture and is never evidence
+for normal production authorization. The parent session's effective permissions remain
+authoritative, so a role prompt cannot grant a capability the host did not grant.
 
 ## Dispatch protocol
 
@@ -80,8 +102,9 @@ Specialists do not subdelegate.
 On V1 hosts, use `agent_type` and `fork_context = false` when that schema actually
 supports them. Do not invent `task_name` or other fields when the live schema does not
 accept them. Do not fall back to a generic model-only child when a named role is missing.
-If named-role routing, the model/effort configuration, or core permission separation is
-unavailable or unverified, stop production dispatch and report the runtime limitation.
+If named-role routing or model/effort configuration is wrong, stop dispatch and report
+the failure. Unobservable reasoning effort is a note. A confirmed host sandbox override
+blocks strict least-privilege use, but alone does not block normal Desktop orchestration.
 
 ## Receipts and diagnostics
 

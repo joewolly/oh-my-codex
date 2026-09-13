@@ -20,9 +20,12 @@ import tempfile
 import threading
 import time
 import tomllib
+import platform
 from urllib.parse import urldefrag
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from . import __version__
 
 
 _ROLES: dict[str, dict[str, str]] = {
@@ -1391,9 +1394,15 @@ def run_verify(
     )
     report = {
         "overall": overall,
+        "verification_label": "LOW-LEVEL RUNTIME VERIFICATION",
+        "surface": "CODEX_CLI_APPSERVER",
+        "desktop_verified": False,
+        "package_version": __version__,
+        "observed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "checks": checks,
         "provenance": {
             "host": host_version,
+            "os": platform.platform(),
             "stderr": host_stderr,
             "runtime": runtime,
             "root_thread_id": root_thread_id,
@@ -1412,7 +1421,7 @@ def run_verify(
             {key: row.get(key) for key in ("thread_id", "role", "source", "model", "effort", "sandbox", "multi_agent_version", "parent_thread_id", "path", "completed", "conflict")}
             for row in observations
         ],
-        "limits": ["nesting is unverified when the host does not expose a complete child graph"],
+        "limits": ["nesting is unverified when the host does not expose a complete child graph", "this separate app-server process is not Codex Desktop verification"],
     }
     if artifact_dir is not None:
         with contextlib.suppress(OSError):
