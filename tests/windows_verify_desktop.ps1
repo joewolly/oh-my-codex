@@ -40,7 +40,13 @@ try {
         $_ -match "^& '.+' '-I' '-S' '-c' "
     })
     Assert-True ($canonical.Count -eq 1) 'prepared prompt must retain exactly one canonical PowerShell command'
-    $canonical[0] | & $PowerShellExe -NoProfile -NonInteractive -Command -
+    $CanonicalScript = Join-Path $TestRoot 'retained-preflight.ps1'
+    [System.IO.File]::WriteAllText(
+        $CanonicalScript,
+        $canonical[0] + [Environment]::NewLine,
+        [System.Text.Encoding]::Unicode
+    )
+    & $PowerShellExe -NoProfile -NonInteractive -File $CanonicalScript
     Assert-True ($LASTEXITCODE -eq 0) 'exact retained command must execute through PowerShell unchanged'
     Assert-True ($canonical[0] -match [regex]::Escape($env:LOCALAPPDATA)) 'retained executable path must exercise spaces'
 
