@@ -22,7 +22,8 @@ class DesktopEvidencePromptContractTests(unittest.TestCase):
 
         self.assertIn("diagnostic PROBE-WRITE TARGETS ACTUALLY ATTEMPTED", prompt)
         self.assertIn("Do NOT add a path merely because it was read", prompt)
-        self.assertIn("do not misclassify it as an `observed_probe_paths` entry", prompt)
+        self.assertIn("no diagnostic write was attempted there", prompt)
+        self.assertIn("`observed_probe_paths` entry", prompt)
         self.assertIn("/fixture/.omc-probes/fixer-write.txt", prompt)
 
     def test_prompt_pins_machine_enforced_enums_and_path_meaning(self) -> None:
