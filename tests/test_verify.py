@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -370,13 +371,11 @@ class VerifyEvidenceTests(unittest.TestCase):
             hook_dir = root / "global-hooks"
             hook_dir.mkdir()
             hook = hook_dir / "pre-commit"
-            hook.write_text(f"#!/bin/sh\ntouch {sentinel}\n", encoding="utf-8")
+            hook.write_bytes(f"#!/bin/sh\ntouch {shlex.quote(sentinel.as_posix())}\n".encode("utf-8"))
             hook.chmod(0o755)
             global_config = root / "gitconfig"
-            global_config.write_text(
-                f"[core]\n\thooksPath = {hook_dir}\n[commit]\n\tgpgSign = true\n",
-                encoding="utf-8",
-            )
+            _git_checked(["config", "--file", str(global_config), "core.hooksPath", str(hook_dir)], fixture)
+            _git_checked(["config", "--file", str(global_config), "commit.gpgSign", "true"], fixture)
             with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config), "GIT_CONFIG_NOSYSTEM": "1"}):
                 _git_checked(["init", "-q"], fixture)
                 _git_checked(["config", "user.name", "Verifier"], fixture)

@@ -508,9 +508,10 @@ def _lifecycle_lock(path: Path):
     if lock_path.exists():
         if lock_path.is_symlink() or not lock_path.is_file():
             raise LifecycleError(f"refusing unsafe lifecycle lock path: {lock_path}")
-        if lock_path.read_bytes() != _LOCK_CONTENT:
-            raise LifecycleError(f"refusing unrecognized lifecycle lock file: {lock_path}")
-        stream = lock_path.open("r+b")
+        try:
+            stream = lock_path.open("r+b")
+        except OSError as exc:
+            raise LifecycleError(f"cannot open lifecycle lock: {lock_path}") from exc
     else:
         try:
             fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
@@ -528,10 +529,6 @@ def _lifecycle_lock(path: Path):
             locked = True
         except ImportError:
             import msvcrt
-            stream.seek(0, os.SEEK_END)
-            if stream.tell() == 0:
-                stream.write(b"\0")
-                stream.flush()
             stream.seek(0)
             try:
                 msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
@@ -540,6 +537,11 @@ def _lifecycle_lock(path: Path):
                 raise LifecycleError("another lifecycle operation is in progress") from exc
         except OSError as exc:
             raise LifecycleError("another lifecycle operation is in progress") from exc
+        # Windows byte-range locks deny reads by contenders. Validate only
+        # after acquiring the lock, using the same descriptor that owns it.
+        stream.seek(0)
+        if stream.read() != _LOCK_CONTENT:
+            raise LifecycleError(f"refusing unrecognized lifecycle lock file: {lock_path}")
         yield
     finally:
         if locked:

@@ -86,8 +86,8 @@ class DesktopVerificationTests(unittest.TestCase):
         self.evidence["roles"]["omc_fixer"].update({"validation_status": "VERIFIED", "receipt": receipt})
         self.evidence["roles"]["omc_oracle"].update({"review_status": "VERIFIED", "review_result": "PASS", "planted_verdict": "FAIL", "planted_finding": finding})
         self.evidence_path.write_text(json.dumps(self.evidence, indent=2), encoding="utf-8")
-        (self.root / "target.py").write_text("def value():\n    return 'expected'\n", encoding="utf-8")
-        (self.root / ".omc-probes/fixer-write.txt").write_text("OMC Desktop Fixer probe\n", encoding="utf-8")
+        (self.root / "target.py").write_bytes(b"def value():\n    return 'expected'\n")
+        (self.root / ".omc-probes/fixer-write.txt").write_bytes(b"OMC Desktop Fixer probe\n")
 
     def _evaluate(self):
         return evaluate_desktop_evidence(self.evidence_path, desktop_version="26.908.40834", runtime_version="0.154.0-alpha.6.2", thread_id="desktop-thread-1", control_thread_id="control-thread-1")
@@ -338,7 +338,7 @@ class DesktopVerificationTests(unittest.TestCase):
 
     def test_deleted_git_fixture_and_unauthorized_behavior_are_not_accepted(self):
         self._complete()
-        shutil.rmtree(self.root / ".git")
+        (self.root / ".git").rename(self.root.parent / "removed-git")
         report = self._evaluate()
         self.assertEqual(report["core_orchestration"], "FAIL")
         self.assertEqual(report["behavioral_role_isolation"], "FAIL")
@@ -371,7 +371,7 @@ class DesktopVerificationTests(unittest.TestCase):
             self.assertIn(text, output.getvalue())
 
     def test_missing_fixture_returns_complete_fail_closed_dimensions(self):
-        shutil.rmtree(self.root)
+        self.root.rename(self.root.parent / "removed-fixture")
         self.evidence_path = Path(self.temp.name) / "orphan.json"
         self._save()
         report = self._evaluate()
@@ -602,15 +602,11 @@ class DesktopVerificationTests(unittest.TestCase):
         return prepared, lines[0]
 
     def _run_prompt_command(self, command):
-        # Resolve the literal `python3` via an isolated PATH, without rewriting
-        # the prompt command, splitting/rejoining it, or substituting argv[0].
-        bindir = self.root.parent / "python bin with spaces"
-        bindir.mkdir(exist_ok=True)
-        python = bindir / "python3"
-        if not python.exists():
-            python.symlink_to(sys.executable)
-        return subprocess.run(command, shell=True, executable="/bin/sh", cwd=self.root.parent,
-                              env={"PATH": str(bindir) + os.pathsep + os.defpath},
+        # Decode the known shlex serialization, preserving every semantic
+        # argument. Use the running Python without requiring a shell or alias.
+        args = shlex.split(command)
+        self.assertEqual(args[:4], ["python3", "-I", "-S", "-c"])
+        return subprocess.run([sys.executable, *args[1:]], cwd=self.root.parent,
                               capture_output=True, text=True)
 
     def test_exact_retained_prompt_command_no_import_outside_checkout_with_spaces(self):
@@ -680,6 +676,7 @@ class DesktopVerificationTests(unittest.TestCase):
         marker = self.root.parent / "tampered-helper-executed"
         for mutation in ("symlink", "hardlink", "replacement"):
             with self.subTest(mutation=mutation):
+                helper.unlink(missing_ok=True)
                 if mutation == "symlink":
                     helper.symlink_to(retained)
                 elif mutation == "hardlink":
