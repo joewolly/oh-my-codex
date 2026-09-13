@@ -25,7 +25,7 @@ class DesktopPreflightRetryContractTests(unittest.TestCase):
         self.assertIn("PREFLIGHT COPY-SAFETY CONTRACT", prompt)
         self.assertIn("/fixture/.omc-probe-preflight.py", prompt)
         self.assertIn("MUST NEVER be used\nas the preflight helper argument", prompt)
-        self.assertIn("do not substitute a role's canary path into it", prompt)
+        self.assertIn("do\nnot substitute a role's canary path into it", prompt)
 
     def test_all_four_dispatches_copy_one_canonical_command(self) -> None:
         prompt = self._prompt()
