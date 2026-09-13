@@ -3,6 +3,77 @@
 This is a dated campaign record. It reports observed checks and their limits; an
 unexecuted check is not represented as a pass.
 
+## Self-contained Desktop preflight repair — 2026-09-13 UTC
+
+Started clean on `codex/desktop-first` at
+`5fbb39c7eba4d0a4039a07f035ca4e2781af99ef`, matching `origin/codex/desktop-first`.
+Development ran directly in the main task without activating Oh-My-Codex or delegating.
+No role/skill/policy assets, models, efforts, sandboxes, orchestration architecture,
+readiness classification rules, or live installation were changed.
+
+The user-reported ordinary no-skill control **passed**. The activated thread then
+stopped before delegation with `No module named oh_my_codex`: the generated gate
+assumed the development package was importable in a fresh Desktop interpreter,
+although live installation supplies capability assets. No specialists, probes, source
+changes or effective-permission tests ran. This was a harness defect, not an observed
+orchestration failure; that run supplies no orchestration acceptance evidence.
+
+Preparation now emits `.omc-probe-preflight.py` from a small standard-library module.
+The generated `python3 -I -S -c` launcher pins its SHA-256 and checks its bytes before
+execution. Metadata and activated evidence bind the helper identity; the helper checks
+preparation identity, prompt, baseline, canonical paths, installed hashes and fixture
+state. The package evaluator regenerates the helper without executing fixture code.
+The original preparation prompt/hash must be retained outside the mutable fixture.
+This is neither self-authentication of arbitrary code nor a race-proof sandbox.
+All `..` components now fail, including formerly accepted normalization inside the root.
+
+Observed development validation:
+
+- Python 3.11.16: **151 tests passed**; Python 3.12.14: **151 tests passed**.
+  The Desktop suite has **66 tests**, with 16 new executable/identity regressions.
+- The required no-import test proves `import oh_my_codex` raises ModuleNotFoundError
+  under the same isolated interpreter flags, sanitized environment and outside-checkout
+  cwd where the actual generated prompt command returns PASS. Paths with spaces work;
+  the valid gate leaves every fixture file byte-identical.
+- Metadata/probe-plan/prompt/baseline/source tampering, every changed or missing installed
+  asset, unsafe paths, symlinks, hard links, replaced probe parents, relocated helpers,
+  stale evidence and wrong canary bytes fail closed. A malicious helper is rejected
+  before its sentinel code executes. Existing control and host-limit classifications
+  remain covered and green.
+- Compilation on both interpreters and `git diff --check` passed. The complete focused
+  code/test/documentation diff was reviewed directly.
+- Wheel and source distribution built with `uv build --python python3.11`.
+  All **13 package code/asset files**, both legal notices and the CLI entry point were
+  verified; the wheel installed into an isolated Python 3.11 venv and the sdist built
+  and installed into a separate Python 3.12 venv. All **66 Desktop tests** and a separate
+  explicit no-import test passed against the wheel from outside the checkout.
+- Final packaged lifecycle: install 6, repeat install 0, upgrade 1, restore 1,
+  uninstall 6, repeat uninstall 0, reinstall 6, final uninstall 6. Config/instruction
+  sentinels remained identical. Both isolated Doctor runs returned **PASS WITH NOTES**
+  (static proof only; provider execution was intentionally absent).
+- A fresh packaged fixture passed preflight with package import unavailable. Its
+  relocated copy exited 2; a malicious helper copy exited 1 without execution.
+- Initial `python -m build` was unavailable in the development interpreter; isolated
+  `uv build` succeeded. One repeat lifecycle command was accidentally launched from
+  the checkout and correctly rejected discovered live-role conflicts; rerunning from
+  the intended isolated cwd passed. No live installed asset was modified.
+- Live role/skill/policy/configuration and global-instruction snapshot hashes remained
+  unchanged. No fresh Desktop workflow, permission probe or acceptance was run.
+- Logs, distributions and isolated validation records are retained under
+  `/private/tmp/omc-self-contained-campaign/`.
+
+The earlier control PASS remains historical evidence with unchanged activation
+semantics. Reuse for final acceptance is not supported by the existing schema-4 model:
+its full code fingerprints and fixture/run/preparation bindings changed. A new neutral
+control is therefore required; no old evidence was restamped. Schema remains 4 with
+preflight contract 1 and mandatory activated helper-digest binding. Fresh Desktop core
+and permission acceptance remain unverified. The known Codex sandbox limitation and
+its readiness treatment remain unchanged.
+
+Final commit/push identity and prepared, unexecuted acceptance artifact paths are
+reported in the task response. No live update, merge, tag, release or publication is
+part of this campaign.
+
 ## Acceptance-harness correction — 2026-09-13 UTC
 
 Started from clean `codex/desktop-first` at

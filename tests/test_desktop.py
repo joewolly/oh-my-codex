@@ -5,6 +5,10 @@ import io
 import hashlib
 import json
 import platform
+import os
+import shlex
+import subprocess
+import sys
 import shutil
 import tempfile
 import unittest
@@ -30,6 +34,7 @@ class DesktopVerificationTests(unittest.TestCase):
             shutil.copy2(ROOT / f"oh_my_codex/assets/agents/{role}.toml", self.codex / f"agents/{role}.toml")
         shutil.copy2(ROOT / "oh_my_codex/assets/skills/oh-my-codex/SKILL.md", self.skills / "oh-my-codex/SKILL.md")
         shutil.copy2(ROOT / "oh_my_codex/assets/skills/oh-my-codex/agents/openai.yaml", self.skills / "oh-my-codex/agents/openai.yaml")
+        (self.codex / "config.toml").write_text('model = "gpt-6-astra"\n')
         prepared = prepare_desktop_fixture(base / "fixture", codex_home=self.codex, skills_home=self.skills)
         self.root = Path(prepared["fixture"])
         self.evidence_path = Path(prepared["evidence"])
@@ -309,7 +314,7 @@ class DesktopVerificationTests(unittest.TestCase):
 
     def test_config_change_invalidates_fingerprint(self):
         self._complete()
-        (self.codex / "config.toml").write_text('model = "gpt-6-astra"\n')
+        (self.codex / "config.toml").write_text('model = "gpt-6-astra"\n# changed\n')
         self.assertEqual(self._evaluate()["evidence_validity"], "FAIL")
 
     def test_probes_must_match_recorded_bytes_and_preserve_protected_files(self):
@@ -396,8 +401,9 @@ class DesktopVerificationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             contained_target(self.root, Path(str(self.root) + "-sibling") / "probe.txt")
 
-    def test_relative_normalization_inside_fixture(self):
-        self.assertEqual(contained_target(self.root, ".omc-probes/../target.py"), self.root / "target.py")
+    def test_parent_traversal_even_inside_fixture_rejected(self):
+        with self.assertRaises(ValueError):
+            contained_target(self.root, ".omc-probes/../target.py")
 
     def test_symlink_escape_and_dangling_link_rejected(self):
         for destination in (self.root.parent, self.root.parent / "missing"):
@@ -555,6 +561,187 @@ class DesktopVerificationTests(unittest.TestCase):
         (self.root / ".omc-desktop.json").write_text(json.dumps(self.metadata))
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(main(["verify-desktop", "--check-probes", str(self.root), "--json"]), 2)
+
+    def _gate_command(self):
+        prompt = (self.root / "desktop-prompt.txt").read_text()
+        return shlex.split(next(line for line in prompt.splitlines() if line.startswith("python3 -I -S -c ")))
+
+    def _run_gate(self, command=None):
+        command = list(command or self._gate_command())
+        command[0] = sys.executable
+        return subprocess.run(command, cwd=self.root.parent, env={"PATH": os.defpath, "PYTHONPATH": ""},
+                              capture_output=True, text=True)
+
+    def test_self_contained_preflight_without_package_outside_checkout_and_with_spaces(self):
+        # The same interpreter, flags, environment and outside cwd must reject the
+        # package import and still execute the exact generated launcher/helper.
+        unavailable = self._run_gate([sys.executable, "-I", "-S", "-c", "import oh_my_codex"])
+        self.assertNotEqual(unavailable.returncode, 0)
+        self.assertIn("No module named 'oh_my_codex'", unavailable.stderr)
+        self.assertIn(" ", str(self.root))
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        result = self._run_gate()
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(json.loads(result.stdout)["overall"], "PASS")
+        direct = self._run_gate([sys.executable, "-I", "-S", str(self.root / ".omc-probe-preflight.py")])
+        self.assertEqual(direct.returncode, 0, direct.stderr + direct.stdout)
+        self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+
+    def test_helper_generated_contained_fingerprinted_and_deterministic(self):
+        from oh_my_codex import desktop
+        helper = contained_target(self.root, ".omc-probe-preflight.py")
+        digest = hashlib.sha256(helper.read_bytes()).hexdigest()
+        self.assertEqual(digest, self.metadata["preflight_sha256"])
+        self.assertEqual(digest, self.evidence["preflight_sha256"])
+        baseline = json.loads((self.root / "fixture-baseline.json").read_text())
+        self.assertEqual(helper.read_bytes(), desktop._helper_bytes(self.root, self.metadata, baseline))
+        self.assertNotIn(helper.name, baseline["files"])
+        self.assertNotIn("import oh_my_codex", helper.read_text())
+        self.assertNotIn("from oh_my_codex", helper.read_text())
+
+    def test_activated_prompt_uses_only_pinned_fixture_gate(self):
+        prompt = (self.root / "desktop-prompt.txt").read_text()
+        self.assertIn("python3 -I -S -c", prompt)
+        self.assertIn(str(self.root / ".omc-probe-preflight.py"), prompt)
+        self.assertIn(self.metadata["preflight_sha256"], prompt)
+        self.assertNotIn("-m oh_my_codex", prompt)
+        self.assertIn("Do not improvise an alternate gate", prompt)
+        self.assertIn("pip install, modify the Python environment, or fall back to importing oh_my_codex", prompt)
+
+    def test_malicious_helper_never_executes_and_evaluation_fails(self):
+        self._complete()
+        marker = self.root / "malicious-executed"
+        (self.root / ".omc-probe-preflight.py").write_text(
+            "from pathlib import Path\nPath(" + repr(str(marker)) + ").touch()\nprint('PASS')\n")
+        result = self._run_gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("helper identity mismatch", result.stderr)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self._evaluate()["evidence_validity"], "FAIL")
+
+    def test_helper_and_local_hash_tampering_cannot_replace_retained_anchor(self):
+        command = self._gate_command()
+        helper = self.root / ".omc-probe-preflight.py"
+        helper.write_text("print('PASS')\n")
+        changed = hashlib.sha256(helper.read_bytes()).hexdigest()
+        self.metadata["preflight_sha256"] = changed
+        (self.root / ".omc-desktop.json").write_text(json.dumps(self.metadata))
+        prompt = self.root / "desktop-prompt.txt"
+        prompt.write_text(prompt.read_text().replace(command[-1], changed))
+        result = self._run_gate(command)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("PASS", result.stdout)
+        with self.assertRaises(ValueError):
+            validate_probe_plan(self.root)
+
+    def test_standalone_metadata_tampering_fails(self):
+        metadata_path = self.root / ".omc-desktop.json"
+        original = metadata_path.read_bytes()
+        for field, value in (("schema", 3), ("fixture_path", str(self.root.parent)),
+                             ("run_id", "forged"), ("asset_fingerprints", {}),
+                             ("preflight_contract", 0), ("directory_identity", {})):
+            changed = dict(self.metadata, **{field: value})
+            metadata_path.write_text(json.dumps(changed))
+            with self.subTest(field=field):
+                result = self._run_gate()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("metadata changed", result.stdout)
+            metadata_path.write_bytes(original)
+
+    def test_standalone_probe_plan_tampering_fails(self):
+        self.metadata["probe_plan"]["omc_explorer"]["path"] = str(self.root.parent / "escape")
+        (self.root / ".omc-desktop.json").write_text(json.dumps(self.metadata))
+        result = self._run_gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root.parent / "escape").exists())
+
+    def test_standalone_every_installed_asset_changed_or_missing_fails(self):
+        from oh_my_codex import desktop
+        for name, path in desktop._asset_paths(self.codex, self.skills).items():
+            if not name.startswith("installed"):
+                continue
+            original = path.read_bytes()
+            for mutation in ("changed", "missing"):
+                if mutation == "changed":
+                    path.write_bytes(original + b"\n# changed\n")
+                else:
+                    path.unlink()
+                with self.subTest(asset=name, mutation=mutation):
+                    result = self._run_gate()
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(name, result.stdout)
+                path.write_bytes(original)
+
+    def test_standalone_missing_asset_at_preparation_still_fails(self):
+        (self.codex / "config.toml").unlink()
+        prepared = prepare_desktop_fixture(self.root.parent / "missing asset fixture", codex_home=self.codex, skills_home=self.skills)
+        result = self._run_gate(shlex.split(prepared["preflight_command"]))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("installed-config", result.stdout)
+
+    def test_standalone_control_integrity_and_source_tampering_fails(self):
+        for name in ("fixture-baseline.json", "desktop-prompt.txt", "control-prompt.txt", "value.txt", "test_target.py", "review_target.py"):
+            path = self.root / name
+            original = path.read_bytes()
+            path.write_bytes(original + b" ")
+            with self.subTest(name=name):
+                self.assertNotEqual(self._run_gate().returncode, 0)
+            path.write_bytes(original)
+        (self.root / "extra.txt").write_text("extra")
+        self.assertNotEqual(self._run_gate().returncode, 0)
+
+    def test_standalone_parent_replacement_fails(self):
+        probes = self.root / ".omc-probes"
+        # Keep the previous inode alive so reuse cannot mask the replacement.
+        probes.rename(self.root.parent / "old probes")
+        shutil.copytree(self.root.parent / "old probes", probes)
+        result = self._run_gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("parent identity changed", result.stdout)
+
+    def test_standalone_symlink_and_hardlink_fail(self):
+        probe = self.root / ".omc-probes/explorer-write.txt"
+        probe.symlink_to(self.root / "value.txt")
+        self.assertNotEqual(self._run_gate().returncode, 0)
+        probe.unlink()
+        probe.hardlink_to(self.root / "value.txt")
+        self.assertNotEqual(self._run_gate().returncode, 0)
+        probe.unlink()
+        helper = self.root / ".omc-probe-preflight.py"
+        copied = self.root.parent / "helper copy"
+        helper.rename(copied)
+        helper.symlink_to(copied)
+        self.assertNotEqual(self._run_gate().returncode, 0)
+        helper.unlink()
+        helper.hardlink_to(copied)
+        self.assertNotEqual(self._run_gate().returncode, 0)
+
+    def test_standalone_accepts_only_exact_authorized_changes_between_dispatches(self):
+        self._complete()
+        for row in self.metadata["probe_plan"].values():
+            Path(row["path"]).write_bytes(bytes.fromhex(row["contents_hex"]))
+        self.assertEqual(self._run_gate().returncode, 0)
+        probe = self.root / ".omc-probes/librarian-write.txt"
+        probe.write_bytes(b"OMC Desktop Librarian probe\\n")
+        self.assertNotEqual(self._run_gate().returncode, 0)
+
+    def test_standalone_copied_helper_cannot_validate_original_fixture(self):
+        copied = self.root.parent / "copied helper.py"
+        shutil.copy2(self.root / ".omc-probe-preflight.py", copied)
+        result = self._run_gate([sys.executable, "-I", "-S", str(copied)])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("outside its prepared fixture", result.stdout)
+
+    def test_prompt_digest_placeholder_in_fixture_name_is_literal(self):
+        prepared = prepare_desktop_fixture(self.root.parent / "__OMC_PREFLIGHT_SHA256__ fixture's name", codex_home=self.codex, skills_home=self.skills)
+        result = self._run_gate(shlex.split(prepared["preflight_command"]))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_stale_helper_evidence_is_rejected(self):
+        self._complete()
+        self.evidence["preflight_sha256"] = "stale"
+        self._save()
+        self.assertEqual(self._evaluate()["evidence_validity"], "FAIL")
 
 
 if __name__ == "__main__":

@@ -100,7 +100,11 @@ $oh-my-codex ask Oracle to review this risky architecture before Fixer implement
 ## Usage
 
 Install from a checkout or with `pip install .`, then use `doctor` for static checks and
-`verify` only for an explicit disposable runtime smoke.
+`verify` only for an explicit disposable runtime smoke. The live installation provides
+Desktop capability assets (skill, agents, policy and managed configuration). The Python
+package/CLI is developer and lifecycle tooling; it need not be importable inside a
+Desktop coding thread. Normal Desktop use does not require a global Python install of
+Oh-My-Codex.
 
 ## Install and use
 
@@ -193,7 +197,13 @@ It measures routing, fixture execution, and permissions for that process; it can
 establish or override Desktop readiness. No generic model-only role fallback is used.
 
 `verify-desktop --prepare` creates a disposable fixture and two unverified
-evidence forms for separate ordinary-control and activated threads (schema 4).
+evidence forms for separate ordinary-control and activated threads (schema 4), plus
+`.omc-probe-preflight.py`, a self-contained standard-library gate. The activated prompt
+runs `python3` with a hash-pinned launcher that checks the helper before execution;
+no package import, checkout working directory, or `PYTHONPATH` is required. Retain the
+preparation-time prompt/hash outside the mutable fixture. Gate failure stops delegation;
+never install packages or substitute a different gate inside the smoke thread. See the
+[Desktop procedure](docs/desktop-smoke.md) for trust bindings and platform details.
 `verify-desktop --evaluate <path>` checks current evidence against source,
 installed assets/configuration, OS, versions, timestamps, and task identity. It reports:
 

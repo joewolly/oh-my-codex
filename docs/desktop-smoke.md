@@ -8,7 +8,8 @@ operator's transcript claims. Model self-description alone is insufficient evide
 ## Prepare without activating
 
 After a deliberate installation/update of the final committed build, prepare with that
-same Python package, using an interpreter available to the future Desktop thread:
+same Python package. Preparation uses Python 3.11+ developer tooling; the future
+Desktop thread needs only Python 3.11+ standard library, available as `python3` on macOS:
 
 ```bash
 python3 -m oh_my_codex verify-desktop --prepare --json
@@ -23,6 +24,7 @@ policy. It creates one canonical disposable Git fixture and schema-4 records:
 - `desktop-evidence.json`: initially UNVERIFIED activated observations.
 - `.omc-desktop.json`: preparation identity, canonical target manifest and fingerprints.
 - `fixture-baseline.json`: protected fixture baseline.
+- `.omc-probe-preflight.py`: generated standalone gate, bound by `preflight_sha256`.
 
 Use the returned absolute paths. `--fixture-dir` must be empty. Temporary paths and
 spaces are supported, including macOS `/var` aliases, canonicalized to `/private/var`.
@@ -84,18 +86,58 @@ threads because skill activation is thread-scoped: an activated history cannot b
 "turned off" and reused as an independent installation-only control.
 
 All implementation and diagnostic writes must stay inside the disposable fixture.
-Before **every** delegation containing a writable target, the parent runs the generated
-`verify-desktop --check-probes <fixture> --json` command. It must return PASS. Retain
-that output for each dispatch; otherwise stop before delegation. If the package is not
-available to that Python interpreter, fix the deliberate setup separately and prepare
-again; never invent fallback paths or run unvalidated probes.
+Before **every** delegation containing a writable target, the parent runs the exact
+`python3 -I -S -c ... <absolute-fixture>/.omc-probe-preflight.py <sha256>` command in the
+prepared prompt. It must return PASS. This standard-library launcher validates the
+helper's canonical regular-file identity and literal SHA-256 **before executing the
+same verified bytes**. Keep the original preparation output and prompt outside the
+writable fixture as the trust anchor; a subsequently edited prompt cannot replace it.
+Directly executing a mutable script cannot authenticate that script, so shortening the
+mandatory command to an unchecked script invocation is not an equivalent gate.
+
+Retain command, exit code and output for every dispatch. A nonzero exit stops before
+spawning specialists, probe writes or source edits; preserve the exact failure in run
+evidence and leave acceptance unverified/failed. Do not improvise an alternate gate,
+run `pip install`, change the Python environment or fall back to a package import.
+A missing `oh_my_codex` Python module is no longer a Desktop runtime requirement.
+The installed skill, policy, agents and configuration provide the live capability;
+the package remains available for preparation, evaluation, Doctor and lifecycle work.
+
+The helper contains only standard-library validation and preparation data. It embeds
+schema 4 / preflight-contract 1, root and probe-directory identities, canonical paths,
+baseline, build fingerprints, absolute installed paths/hashes and the prompt template.
+Metadata and activated evidence carry the complete helper SHA-256. The prompt template
+contains a digest placeholder resolved after generation, avoiding a circular hash of
+helper and prompt. The pinned helper compares exact metadata/baseline/prompt bytes,
+requires installed skill/policy/four agents/configuration with matching hashes, and
+checks required files and unexpected fixture entries. Package/source fingerprints are
+captured preparation identity, not runtime filesystem dependencies; retrospective
+package tooling still checks them against the current evaluator/build.
+
+The helper is a control file rather than implementation source, but is never excluded
+from integrity checks. The evaluator regenerates its bytes from trusted package code
+and checks its metadata/evidence digest without executing fixture code. Later gates
+accept only the exact permitted Fixer result and named canary bytes; attribution remains
+an evidence requirement. Editable evidence records are separate from immutable
+preparation data. No local artifact can authenticate itself if the operator replaces
+both the artifact and the external trust anchor. Keep the original prompt/hash.
+
+macOS Tier-1 uses `python3`, never bare `python`. The helper is portable Python 3.11+
+and the launcher uses `-I -S` to ignore Python environment/site imports. The generated
+command uses POSIX shell quoting (macOS/Linux). Windows operators must deliberately
+prepare an equivalent shell-appropriate launcher using Python 3.11+ and the same pinned
+bytes/hash before starting acceptance; the macOS command is not a PowerShell command.
+Do not relocate/copy a prepared fixture for acceptance: root/directory identities are
+bound. Prepare a fresh fixture at the intended location.
 
 Trusted harness logic creates and validates four fixed paths under the fixture's own
 `.omc-probes/` directory, plus `target.py` for Fixer implementation. It resolves the
 root, resolves each candidate, and uses path-component containment (`relative_to`),
-not string prefixes. Absolute outside paths, `..` escapes, sibling-prefix tricks,
+not string prefixes. Absolute outside paths, any `..` component, sibling-prefix tricks,
 symlink/dangling-link/loop escapes, hard-linked targets and invalid parents fail closed.
-The gate also rejects altered manifests/prompts and changed package/installed hashes.
+The gate also rejects altered manifests/prompts, changed installed hashes and
+observable root/probe-parent replacement. Developer evaluation additionally checks
+current package hashes.
 Preflight cannot prevent a Full Access process from changing paths afterward; keep the
 fixture free of concurrent filesystem mutations. This is not a race-proof write broker
 or a replacement for host sandbox enforcement.
@@ -109,8 +151,8 @@ bytes to make evidence pass. Preserve successful writes and their actual SHA-256
 
 Explorer investigates `target.py` and `value.txt`; Librarian researches the official
 Python empty-mean contract. Reconcile both terminal results before Fixer. Fixer changes
-only `target.py`, creates its named canary, runs `python -B -m unittest -v test_target.py`
-(use available `python3` if needed), and returns its structured receipt. Reconcile it
+only `target.py`, creates its named canary, runs `python3 -B -m unittest -v test_target.py`,
+and returns its structured receipt. Reconcile it
 before Oracle. Oracle independently reviews the repaired target/receipt, then reports
 FAIL for the unchanged planted empty-input defect with expected zero and observed
 ZeroDivisionError. Oracle never implements.
@@ -185,3 +227,16 @@ UNVERIFIED; observed violations fail. Unobservable effort adds notes; wrong effo
 
 See [verification](verification.md) for historical runs and isolated development proof.
 No old run becomes accepted simply because this harness was corrected.
+
+## Control evidence after this harness repair
+
+The earlier ordinary thread's `17 + 25 = 42` response and observed absence of a mandatory
+specialist workflow remain a successful historical activation-control result. Its
+prompt and activation semantics are unchanged. Nevertheless, the existing schema-4
+control evaluator binds the full package/evaluator hash set, fixture path, preparation
+and control run IDs, versions and 24-hour freshness. This repair changes those code
+hashes and prepares a new fixture. The evidence model has no independent transferable
+control contract, so a new control observation is required for current-build acceptance.
+Do not restamp or copy the old PASS into new evidence. The generated neutral prompt
+remains unchanged. Readiness classifications and the known Codex sandbox limitation
+are unchanged; this repair supplies no new live orchestration/permission evidence.

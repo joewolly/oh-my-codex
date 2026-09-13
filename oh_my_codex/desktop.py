@@ -24,6 +24,8 @@ from urllib.parse import urldefrag
 
 from . import __version__
 from .lifecycle import resolve_paths
+from . import desktop_preflight
+from .desktop_preflight import contained_target
 
 ROLES = ("omc_explorer", "omc_librarian", "omc_fixer", "omc_oracle")
 ROLE_CONTRACTS = {
@@ -38,49 +40,11 @@ _PROMPT = "desktop-prompt.txt"
 _BASELINE = "fixture-baseline.json"
 _CONTROL_EVIDENCE = "control-evidence.json"
 _CONTROL_PROMPT = "control-prompt.txt"
-_CONTROL_FILES = {_META, _EVIDENCE, _PROMPT, _BASELINE, _CONTROL_EVIDENCE, _CONTROL_PROMPT}
+_CONTROL_FILES = {desktop_preflight.HELPER, _META, _EVIDENCE, _PROMPT, _BASELINE, _CONTROL_EVIDENCE, _CONTROL_PROMPT}
 _SCHEMA = 4
 _PROBE_TEXT = "OMC Desktop Fixer probe\n"
 _OFFICIAL_STATISTICS_URL = "https://docs.python.org/3/library/statistics.html"
 _FRESHNESS_SECONDS = 24 * 60 * 60
-
-
-def contained_target(root: Path, candidate: str | Path) -> Path:
-    """Canonical, component-based containment; reject all in-fixture symlinks.
-
-    Resolve the root first (including macOS /var -> /private/var). Missing leaf
-    names are allowed, but loops, dangling links and non-directory parents fail.
-    This is preflight validation, not protection against concurrent host mutation.
-    """
-    try:
-        canonical = root.resolve(strict=True)
-        if not canonical.is_dir():
-            raise ValueError("fixture root is not a directory")
-        raw = Path(candidate)
-        path = raw if raw.is_absolute() else canonical / raw
-        # Check lexical components too: never traverse an untrusted symlink even
-        # when its resolved destination happens to remain inside the fixture.
-        for part in (path, *path.parents):
-            if part == canonical:
-                break
-            if part.is_symlink() and part.is_relative_to(canonical):
-                raise ValueError("symlink in probe path")
-        resolved = path.resolve(strict=False)
-        relative = resolved.relative_to(canonical)
-        if not relative.parts:
-            raise ValueError("probe target cannot be the fixture root")
-        for parent in resolved.parents:
-            if parent == canonical:
-                break
-            if parent.exists() and not parent.is_dir():
-                raise ValueError("probe parent is not a directory")
-        if resolved.exists() and not resolved.is_file():
-            raise ValueError("probe target is not a regular file")
-        if resolved.exists() and resolved.stat().st_nlink != 1:
-            raise ValueError("hard-linked probe target")
-        return resolved
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise ValueError(f"cannot prove fixture containment for {candidate!s}: {exc}") from exc
 
 
 def _probe_plan(root: Path) -> dict[str, Any]:
@@ -91,24 +55,58 @@ def _probe_plan(root: Path) -> dict[str, Any]:
     }
 
 
-def validate_probe_plan(fixture_dir: str | os.PathLike[str], *, check_current_assets: bool = True) -> dict[str, Any]:
-    """Read-only gate; paths come from code, never from untrusted metadata.
+def _preflight_command(root: Path, helper_sha: str) -> str:
+    # This literal hash is retained in the preparation-time prompt, outside the
+    # writable fixture. Execute the SAME bytes we hashed, never reopen as code.
+    launcher = ("import hashlib,json,pathlib,stat,sys; "
+                "p=pathlib.Path(sys.argv[1]); s=p.lstat(); "
+                "ok=stat.S_ISREG(s.st_mode) and s.st_nlink==1 and "
+                "p.resolve()==p; "
+                "ok or sys.exit(\"preflight helper is not a canonical single-link regular file; STOP\"); "
+                "b=p.read_bytes(); ok=hashlib.sha256(b).hexdigest()==sys.argv[2]; "
+                "ok or sys.exit(json.dumps({'overall':'FAIL','error':'preflight helper identity mismatch','delegation':'STOP'})); "
+                "exec(compile(b,str(p),'exec'),{'__name__':'__main__','__file__':str(p)})")
+    return shlex.join(["python3", "-I", "-S", "-c", launcher, str(root / desktop_preflight.HELPER), helper_sha])
 
-    Only the retrospective evaluator skips current assets here so it can classify
-    stale assets and project misconfiguration separately. CLI preflight always checks.
-    """
+
+def _helper_binding(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any]:
+    prompt = _desktop_prompt(root, root / _EVIDENCE, desktop_preflight.HASH_TOKEN)
+    command = _preflight_command(root, desktop_preflight.HASH_TOKEN)
+    return {
+        "metadata": {key: value for key, value in metadata.items() if key != "preflight_sha256"},
+        "baseline": dict(baseline),
+        "installed_paths": {key: str(path) for key, path in _asset_paths(Path(metadata["codex_home"]), Path(metadata["skills_home"])).items() if key.startswith("installed")},
+        "prompt_template": prompt,
+        "prompt_hash_offset": prompt.index(command) + len(command) - len(desktop_preflight.HASH_TOKEN),
+        "control_prompt": _control_prompt(),
+    }
+
+
+def _helper_bytes(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> bytes:
+    binding = _helper_binding(root, metadata, baseline)
+    # Only the small standard-library gate is copied, never the package/runtime.
+    source = Path(desktop_preflight.__file__).read_bytes()
+    return source + ("\nif __name__ == '__main__':\n    raise SystemExit(main(json.loads(" + repr(json.dumps(binding, sort_keys=True)) + ")))\n").encode()
+
+
+def validate_probe_plan(fixture_dir: str | os.PathLike[str], *, check_current_assets: bool = True) -> dict[str, Any]:
+    """Validate trusted regeneration; never execute fixture code in developer tooling."""
     root = Path(fixture_dir).resolve(strict=True)
     metadata = _read_json(contained_target(root, _META))
-    plan = _probe_plan(root)
-    target = str(contained_target(root, "target.py"))
-    if metadata.get("schema") != _SCHEMA or metadata.get("fixture_path") != str(root) or metadata.get("probe_plan") != plan or metadata.get("fixer_target") != target:
-        raise ValueError("probe manifest differs from canonical harness-owned targets; do not delegate")
+    baseline = _read_json(contained_target(root, _BASELINE))
+    try:
+        helper = _helper_bytes(root, metadata, baseline)
+        helper_sha = _sha_bytes(helper)
+        if metadata.get("preflight_sha256") != helper_sha or contained_target(root, desktop_preflight.HELPER).read_bytes() != helper:
+            raise ValueError("preflight helper/preparation identity changed; do not delegate")
+        result = desktop_preflight.validate(_helper_binding(root, metadata, baseline), helper_sha,
+                                            check_assets=check_current_assets, check_state=check_current_assets)
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"invalid preflight preparation metadata: {exc}") from exc
     codex, skills = resolve_paths(metadata.get("codex_home"), metadata.get("skills_home"))
     if check_current_assets and metadata.get("asset_fingerprints") != _asset_fingerprints(codex, skills):
         raise ValueError("harness/installed assets changed since preparation; do not delegate")
-    if contained_target(root, _PROMPT).read_text(encoding="utf-8") != _desktop_prompt(root, root / _EVIDENCE):
-        raise ValueError("probe prompt changed; do not delegate")
-    return {"overall": "PASS", "fixture": str(root), "probe_plan": plan, "fixer_target": target}
+    return result
 
 
 def _control_prompt() -> str:
@@ -258,6 +256,7 @@ def _evidence_template(root: Path, baseline: Mapping[str, Any], codex_home: Path
         "os": "UNVERIFIED", "observed_at": "UNVERIFIED", "desktop_version": "UNVERIFIED", "runtime_version": "UNVERIFIED",
         "run_id": "UNVERIFIED", "thread_id": "UNVERIFIED", "fixture_path": str(root),
         "fixture_baseline_fingerprint": baseline["fingerprint"], "asset_fingerprints": _asset_fingerprints(codex_home, skills_home),
+        "preflight_sha256": _read_json(root / _META)["preflight_sha256"],
         "probe_plan": _probe_plan(root), "fixer_target": str(contained_target(root, "target.py")),
         "restart_completed": "UNVERIFIED", "new_thread_started": "UNVERIFIED", "skill_discovered": "UNVERIFIED",
         "explicit_skill_invocation": "UNVERIFIED",
@@ -283,7 +282,9 @@ def _git_checked(args: list[str], cwd: Path) -> None:
         raise ValueError(f"fixture git command failed ({' '.join(args)}): {(completed.stderr or completed.stdout).strip()}")
 
 
-def _desktop_prompt(root: Path, evidence_path: Path) -> str:
+def _desktop_prompt(root: Path, evidence_path: Path, helper_sha: str | None = None) -> str:
+    if helper_sha is None:
+        helper_sha = _read_json(root / _META)["preflight_sha256"]
     plan = _probe_plan(root)
     target = contained_target(root, "target.py")
     probe_instructions = "\n".join(
@@ -293,7 +294,7 @@ def _desktop_prompt(root: Path, evidence_path: Path) -> str:
         f"(ASCII text ending in one LF byte 0a, never literal backslash-n). "
         f"Return actual_probe_path, probe_instruction_path, outcome and SHA-256 in the receipt."
         for role, row in plan.items())
-    preflight = shlex.join(["python3", "-m", "oh_my_codex", "verify-desktop", "--check-probes", str(root), "--json"])
+    preflight = _preflight_command(root, helper_sha)
     return f"""Codex Desktop smoke test for Oh-My-Codex (diagnostic fixture only)
 
 This is an explicitly user-authorized diagnostic exception. Work only in {root}.
@@ -301,9 +302,16 @@ Do not publish, install, touch any path outside the fixture, or claim that this 
 normal production permissions. Load $oh-my-codex in this fresh Desktop thread and keep
 the main thread as the Orchestrator. Use exactly Explorer, Librarian, Fixer, and Oracle.
 
-Before EVERY delegation containing a writable path, run this trusted harness gate:
+Before EVERY delegation containing a writable path, run this EXACT hash-pinned fixture
+preflight. The standard-library launcher verifies the helper before executing its bytes:
 {preflight}
-If it fails, STOP before delegation. Never invent a fallback path. Copy only the exact
+If it exits nonzero, STOP before spawning any specialist or writing probes/source.
+Preserve/report the exact command, exit code and failure output in the run evidence.
+Acceptance remains unverified/failed. Do not improvise an alternate gate, attempt
+pip install, modify the Python environment, or fall back to importing oh_my_codex.
+Only this successful gate permits delegation. Never invent a fallback path.
+Keep this preparation-time prompt/hash as the trust anchor outside the writable fixture;
+do not replace it with a subsequently modified fixture prompt. Copy only the exact
 validated targets below into specialist packets. Record probe_preflight=VERIFIED only
 with retained command output for each dispatch. Keep the fixture free of concurrent
 filesystem changes. This preflight is not a host sandbox or a race-proof write broker.
@@ -319,7 +327,7 @@ Required evidence:
   (StatisticsError) at https://docs.python.org/3/library/statistics.html and attempts
   only {json.dumps(plan['omc_librarian']['path'])}; record the actual host outcome (denial is required for strict isolation).
 - Fixer changes only target.py so value() returns 'expected', runs
-  `python -B -m unittest -v test_target.py`, creates only {json.dumps(plan['omc_fixer']['path'])}
+  `python3 -B -m unittest -v test_target.py`, creates only {json.dumps(plan['omc_fixer']['path'])}
   containing exactly `OMC Desktop Fixer probe` followed by a newline,
   and returns a structured receipt with task/status/files/validation/deviations/
   unresolved_risks.
@@ -380,6 +388,13 @@ def prepare_desktop_fixture(fixture_dir: str | os.PathLike[str] | None = None, *
     (root / _BASELINE).write_bytes(_json_bytes(baseline))
     prepared_at = _utc_now()
     metadata = {"schema": _SCHEMA, "run_id": uuid.uuid4().hex, "prepared_at": prepared_at, "package_version": __version__, "asset_fingerprints": _asset_fingerprints(codex, skills), "codex_home": str(codex), "skills_home": str(skills), "baseline_fingerprint": baseline["fingerprint"], "fixture_path": str(root), "probe_plan": plan, "fixer_target": fixer_target, "control_run_id": uuid.uuid4().hex}
+    metadata["preflight_contract"] = 1
+    metadata["directory_identity"] = {
+        name: [path.stat().st_dev, path.stat().st_ino]
+        for name, path in ((".", root), (".omc-probes", probes))}
+    helper_bytes = _helper_bytes(root, metadata, baseline)
+    metadata["preflight_sha256"] = _sha_bytes(helper_bytes)
+    (root / desktop_preflight.HELPER).write_bytes(helper_bytes)
     (root / _META).write_bytes(_json_bytes(metadata))
     control = {key: metadata[key] for key in ("schema", "prepared_at", "package_version", "asset_fingerprints", "fixture_path")}
     control.update({"run_id": metadata["control_run_id"], "activation_control_result": "UNVERIFIED",
@@ -393,12 +408,12 @@ def prepare_desktop_fixture(fixture_dir: str | os.PathLike[str] | None = None, *
                     "evidence_reference": "", "prompt": _control_prompt(), "response": "",
                     "ordinary_subagents_used": "UNVERIFIED"})
     (root / _CONTROL_EVIDENCE).write_bytes(_json_bytes(control))
-    (root / _CONTROL_PROMPT).write_text(_control_prompt(), encoding="utf-8")
+    (root / _CONTROL_PROMPT).write_bytes(_control_prompt().encode())
     evidence_path = root / _EVIDENCE
     evidence_path.write_bytes(_json_bytes(_evidence_template(root, baseline, codex, skills, prepared_at)))
     prompt_path = root / _PROMPT
-    prompt_path.write_text(_desktop_prompt(root, evidence_path), encoding="utf-8")
-    return {"overall": "PASS", "status": "prepared", "fixture": str(root), "prompt": str(prompt_path), "control_prompt": str(root / _CONTROL_PROMPT), "control_evidence": str(root / _CONTROL_EVIDENCE), "evidence": str(evidence_path), "run_id": metadata["run_id"], "prepared_at": prepared_at, "baseline_fingerprint": baseline["fingerprint"], "message": "After deliberate installation, use TWO fresh Desktop threads: ordinary control first, activated smoke second. Fill separate evidence and evaluate with both thread ids."}
+    prompt_path.write_bytes(_desktop_prompt(root, evidence_path).encode())
+    return {"overall": "PASS", "status": "prepared", "fixture": str(root), "prompt": str(prompt_path), "preflight": str(root / desktop_preflight.HELPER), "preflight_sha256": metadata["preflight_sha256"], "preflight_command": _preflight_command(root, metadata["preflight_sha256"]), "control_prompt": str(root / _CONTROL_PROMPT), "control_evidence": str(root / _CONTROL_EVIDENCE), "evidence": str(evidence_path), "run_id": metadata["run_id"], "prepared_at": prepared_at, "baseline_fingerprint": baseline["fingerprint"], "message": "After deliberate installation, use TWO fresh Desktop threads: ordinary control first, activated smoke second. Fill separate evidence and evaluate with both thread ids."}
 
 
 def _truth(value: Any) -> bool:
@@ -571,6 +586,7 @@ def evaluate_desktop_evidence(evidence_path: str | os.PathLike[str], *, desktop_
     checks.append({"name": "explicit-activation-control", "status": control_status, "evidence": control_detail, "scope": "control"})
     try:
         plan = validate_probe_plan(root, check_current_assets=False)["probe_plan"]
+        check("preflight-identity", evidence.get("preflight_sha256") == metadata.get("preflight_sha256"), "helper identity bound to run evidence", "evidence")
         check("probe-manifest", True, "canonical harness-owned targets validated", "boundary")
         check("probe-evidence-manifest", evidence.get("probe_plan") == plan and evidence.get("fixer_target") == str(contained_target(root, "target.py")), "expected paths/bytes recorded unchanged", "boundary")
         check("probe-prompt", (root / _PROMPT).read_text(encoding="utf-8") == _desktop_prompt(root, root / _EVIDENCE), "generated authorization text is unchanged", "boundary")
