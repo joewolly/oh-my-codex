@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import types
@@ -89,13 +90,59 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(explicit_codex, (self.base / "explicit – codex").absolute())
         self.assertEqual(explicit_skills, (self.base / "explicit – skills").absolute())
 
-    def test_posix_lock_branch_is_exclusive(self) -> None:
+    def test_native_lock_is_exclusive_and_released(self) -> None:
         lock_dir = self.base / "lock root"
         lock_dir.mkdir()
-        with lifecycle._lifecycle_lock(lock_dir / ".oh-my-codex.lock"):
+        lock_path = lock_dir / ".oh-my-codex.lock"
+        with lifecycle._lifecycle_lock(lock_path):
             with self.assertRaises(lifecycle.LifecycleError):
-                with lifecycle._lifecycle_lock(lock_dir / ".oh-my-codex.lock"):
+                with lifecycle._lifecycle_lock(lock_path):
                     pass
+        with lifecycle._lifecycle_lock(lock_path):
+            self.assertEqual(lock_path.stat().st_size, len(lifecycle._LOCK_CONTENT))
+
+    def test_native_lock_excludes_another_process_and_releases_after_error(self) -> None:
+        lock_path = self.base / "process lock"
+        script = """
+import sys
+from pathlib import Path
+from oh_my_codex.lifecycle import LifecycleError, _lifecycle_lock
+try:
+    with _lifecycle_lock(Path(sys.argv[1])):
+        result = 'acquired'
+except LifecycleError:
+    result = 'contended'
+assert result == sys.argv[2], result
+"""
+
+        def attempt(expected):
+            result = subprocess.run(
+                [sys.executable, "-c", script, str(lock_path), expected],
+                cwd=Path(lifecycle.__file__).resolve().parent.parent,
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        with self.assertRaisesRegex(RuntimeError, "operation failed"):
+            with lifecycle._lifecycle_lock(lock_path):
+                attempt("contended")
+                raise RuntimeError("operation failed")
+        attempt("acquired")
+
+    def test_windows_lock_contention_does_not_read_or_unlock(self) -> None:
+        lock_path = self.base / "contended lock"
+        lock_path.write_bytes(lifecycle._LOCK_CONTENT)
+        stream = mock.MagicMock()
+        locking = mock.Mock(side_effect=PermissionError("locked byte"))
+        fake_msvcrt = types.SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, locking=locking)
+        with mock.patch.dict(sys.modules, {"fcntl": None, "msvcrt": fake_msvcrt}), \
+                mock.patch.object(Path, "open", return_value=stream):
+            with self.assertRaises(lifecycle.LifecycleError):
+                with lifecycle._lifecycle_lock(lock_path):
+                    self.fail("contender entered the lifecycle operation")
+        stream.read.assert_not_called()
+        stream.close.assert_called_once()
+        locking.assert_called_once_with(stream.fileno.return_value, fake_msvcrt.LK_NBLCK, 1)
 
     def test_windows_msvcrt_lock_branch_simulation(self) -> None:
         fake_msvcrt = types.SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, calls=[])
