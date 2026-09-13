@@ -53,6 +53,13 @@ class DesktopPreflightRecoveryTests(unittest.TestCase):
             text=True,
         )
 
+    def test_prepared_prompt_has_no_legacy_ambiguities(self) -> None:
+        prompt = (self.root / "desktop-prompt.txt").read_text(encoding="utf-8")
+        self.assertNotIn("If it exits nonzero, STOP before spawning", prompt)
+        self.assertNotIn("list of all probe paths seen", prompt)
+        self.assertIn("CANONICAL retained preflight command exits nonzero", prompt)
+        self.assertIn("diagnostic probe-write TARGET paths actually attempted", prompt)
+
     def test_noncanonical_oracle_canary_typo_does_not_poison_canonical_retry(self) -> None:
         first = self._run(self.canonical)
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
