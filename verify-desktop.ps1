@@ -100,6 +100,21 @@ function Get-InstalledIdentity {
     )
 }
 
+function Test-AssetFingerprintsEqual([object]$Left, [object]$Right) {
+    $leftProperties = @($Left.PSObject.Properties)
+    $rightProperties = @($Right.PSObject.Properties)
+    if ($leftProperties.Count -ne $rightProperties.Count) {
+        return $false
+    }
+    foreach ($property in $leftProperties) {
+        $other = $Right.PSObject.Properties[$property.Name]
+        if ($null -eq $other -or [string]$property.Value -cne [string]$other.Value) {
+            return $false
+        }
+    }
+    return $true
+}
+
 function Start-FreshRun {
     $prepared = Invoke-ToolJson -Arguments @('-m', 'oh_my_codex', 'verify-desktop', '--prepare', '--json')
     if ($prepared.overall -ne 'PASS' -or $prepared.status -ne 'prepared') {
@@ -209,9 +224,8 @@ if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) {
 
 $state = Read-PendingState
 $installed = Get-InstalledIdentity
-$installedAssets = $installed.asset_fingerprints | ConvertTo-Json -Compress
-$pendingAssets = $state.asset_fingerprints | ConvertTo-Json -Compress
-if ($installed.package_version -ne $state.package_version -or $installedAssets -ne $pendingAssets) {
+if ($installed.package_version -ne $state.package_version -or
+    -not (Test-AssetFingerprintsEqual $installed.asset_fingerprints $state.asset_fingerprints)) {
     Archive-State 'installed-build-changed'
     Write-Host 'The installed Oh-My-Codex build changed. The stale wrapper state was archived and its forensic fixture was preserved.'
     Start-FreshRun
