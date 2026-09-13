@@ -28,7 +28,7 @@ try {
     Assert-True ($ToolingVersion -eq $env:OMC_EXPECTED_PYTHON) 'bootstrap must use the setup-python interpreter selected by CI'
 
     $Wrapper = Join-Path $RepoRoot 'verify-desktop.ps1'
-    $first = & $Wrapper
+    $first = & $Wrapper *>&1
     $StatePath = Join-Path $env:LOCALAPPDATA 'Oh-My-Codex\verify-desktop-state.json'
     Assert-True (Test-Path -LiteralPath $StatePath -PathType Leaf) 'preparation must create pending state'
     $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
@@ -50,7 +50,7 @@ try {
         -DesktopVersion 'desktop-test-version' `
         -RuntimeVersion 'runtime-test-version' `
         -ControlResponse '42. No mandatory role workflow.' `
-        -ConfirmControlPass
+        -ConfirmControlPass *>&1
     $state2 = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
     Assert-True ($state2.run_id -eq $state.run_id) 'second stage must not replace or mix the prepared run'
     Assert-True ($state2.fixture -eq $state.fixture) 'second stage must retain the exact fixture'
@@ -58,7 +58,7 @@ try {
     Assert-True ($global:OmcWindowsCiClipboardText -eq (Get-Content -LiteralPath $state2.desktop_prompt -Raw)) 'second run must copy the exact activated prompt'
     Assert-True (($second -join "`n") -match 'STEP 2 - ACTIVATED THREAD') 'second run must print concise activated guidance'
 
-    $third = & $Wrapper
+    $third = & $Wrapper *>&1
     Assert-True (($third -join "`n") -match 'activated evidence is not complete') 'incomplete evidence must not be evaluated or replaced'
     $state3 = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
     Assert-True ($state3.run_id -eq $state.run_id) 'incomplete rerun must preserve the pending run'
