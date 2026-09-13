@@ -99,14 +99,52 @@ $oh-my-codex ask Oracle to review this risky architecture before Fixer implement
 
 ## Usage
 
-Install from a checkout or with `pip install .`, then use `doctor` for static checks and
-`verify` only for an explicit disposable runtime smoke. The live installation provides
-Desktop capability assets (skill, agents, policy and managed configuration). The Python
-package/CLI is developer and lifecycle tooling; it need not be importable inside a
-Desktop coding thread. Normal Desktop use does not require a global Python install of
-Oh-My-Codex.
+The recommended installer is now repository-owned and one-command from a checkout. It
+creates a private per-user Python tooling environment, installs the exact checkout into
+that environment, runs the managed-asset installer, and runs `doctor`. The tooling venv
+is only for installation/diagnostics; normal Codex Desktop orchestration still uses the
+installed skill and custom-agent assets and does not require the Python package to be
+importable inside a coding thread.
 
 ## Install and use
+
+### One-command bootstrap (recommended)
+
+Clone the repository, then run the platform bootstrap from the repository root.
+
+macOS and Linux:
+
+```bash
+bash install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+The bootstrap finds Python 3.11+, creates or reuses a private tooling venv, installs the
+current checkout into it, runs `oh_my_codex install`, then runs `doctor`. It preserves
+unrelated Codex configuration and **does not globally activate Oh-My-Codex**. After it
+finishes, fully quit/relaunch Codex Desktop, start a NEW thread, select Astra or Sol, and
+explicitly invoke `$oh-my-codex`.
+
+Optional bootstrap overrides are available for isolated/test installations:
+
+```bash
+bash install.sh --venv-dir /custom/tooling --codex-home /custom/.codex --skills-home /custom/skills
+```
+
+```powershell
+.\install.ps1 -VenvDir C:\Tools\omc -CodexHome C:\Temp\.codex -SkillsHome C:\Temp\skills
+```
+
+This also gives Codex itself a simple install procedure: clone
+`https://github.com/joewolly/oh-my-codex`, then run the platform bootstrap script and
+restart Codex Desktop.
+
+### Manual install
 
 From a checkout with Python 3.11 or newer, macOS and Linux:
 
@@ -144,7 +182,7 @@ py -3.11 -m oh_my_codex verify --runtime v2 --timeout 300
 py -3.11 -m oh_my_codex verify-desktop --prepare
 ```
 
-The console command is equivalent after installation:
+The console command is equivalent after a manual package installation:
 
 ```bash
 oh-my-codex doctor
@@ -161,10 +199,11 @@ The additive installer preserves the main configuration, uses a manifest and bac
 and accepts `--codex-home` and `--skills-home` overrides. It does not rewrite unrelated
 configuration. Uninstall removes only unchanged files recorded as Oh-My-Codex managed;
 modified files are preserved and their backups remain available. It does not restore
-backups automatically. To reinstall, run `install` again with the same roots after
-reviewing the manifest and preserved files. After install or reinstall, quit and restart
-Codex Desktop, then start a NEW thread; custom-agent discovery has no supported hot
-reload guarantee. Select Astra or Sol in that thread and invoke `$oh-my-codex`.
+backups automatically. To reinstall, run the bootstrap or `install` again with the same
+roots after reviewing the manifest and preserved files. After install or reinstall, quit
+and restart Codex Desktop, then start a NEW thread; custom-agent discovery has no
+supported hot reload guarantee. Select Astra or Sol in that thread and invoke
+`$oh-my-codex`.
 
 ## Uninstall
 
@@ -184,7 +223,8 @@ py -3.11 -m pip uninstall oh-my-codex
 ```
 
 The pip uninstall is optional package removal; it does not replace the managed-asset
-uninstall. Reinstall by running the install command again with the same roots.
+uninstall. Reinstall by running the bootstrap or install command again with the same
+roots.
 
 ## Doctor, verify, and Desktop smoke
 
