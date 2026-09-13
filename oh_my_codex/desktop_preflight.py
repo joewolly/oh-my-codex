@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tomllib
 from pathlib import Path
 from typing import Any
 
 HELPER = ".omc-probe-preflight.py"
 HASH_TOKEN = "__OMC_PREFLIGHT_SHA256__"
+_OMC_ROLES = {"omc_explorer", "omc_librarian", "omc_fixer", "omc_oracle"}
 
 
 def contained_target(root: Path, candidate: str | Path) -> Path:
@@ -62,6 +64,32 @@ def json_bytes(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
 
 
+def validate_config(path: Path) -> None:
+    """Validate the user-owned Codex config semantically, not byte-for-byte.
+
+    Codex Desktop may legitimately rewrite unrelated settings after preparation.
+    Acceptance only needs the current config to remain parseable and compatible
+    with OMC role discovery; the installer does not own this file.
+    """
+    if path.is_symlink():
+        raise ValueError(f"effective config.toml is a symlink: {path}")
+    if not path.exists():
+        return
+    if not path.is_file():
+        raise ValueError(f"effective config.toml is not a regular file: {path}")
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"effective config.toml is invalid: {exc}") from exc
+    agents = data.get("agents") if isinstance(data, dict) else None
+    if isinstance(agents, dict):
+        if agents.get("enabled") is False:
+            raise ValueError("effective config.toml sets agents.enabled=false")
+        conflicts = sorted(_OMC_ROLES.intersection(str(key) for key in agents))
+        if conflicts:
+            raise ValueError("effective config.toml declares conflicting OMC roles: " + ", ".join(conflicts))
+
+
 def validate(binding: dict[str, Any], helper_sha: str, *, check_assets: bool = True,
              check_state: bool = True) -> dict[str, Any]:
     """Read only; all expected data comes from the externally pinned helper bytes."""
@@ -100,7 +128,14 @@ def validate(binding: dict[str, Any], helper_sha: str, *, check_assets: bool = T
     if expected["schema"] != 4 or expected["preflight_contract"] != 1 or expected["probe_plan"] != plan or expected["fixer_target"] != target:
         raise ValueError("probe manifest differs from canonical harness-owned targets")
     if check_assets:
-        for name, path in binding["installed_paths"].items():
+        installed_paths = binding["installed_paths"]
+        config_path = binding.get("config_path") or installed_paths.get("installed-config")
+        if not config_path:
+            raise ValueError("effective config.toml path is missing from the preparation binding")
+        validate_config(Path(config_path))
+        for name, path in installed_paths.items():
+            if name == "installed-config":
+                continue
             asset = Path(path)
             if not asset.is_file() or sha(asset.read_bytes()) != expected["asset_fingerprints"][name]:
                 raise ValueError(f"missing or changed installed asset: {name}: {path}")
