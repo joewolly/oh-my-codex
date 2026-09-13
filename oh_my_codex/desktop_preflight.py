@@ -128,8 +128,14 @@ def validate(binding: dict[str, Any], helper_sha: str, *, check_assets: bool = T
     if expected["schema"] != 4 or expected["preflight_contract"] != 1 or expected["probe_plan"] != plan or expected["fixer_target"] != target:
         raise ValueError("probe manifest differs from canonical harness-owned targets")
     if check_assets:
-        validate_config(Path(binding["config_path"]))
-        for name, path in binding["installed_paths"].items():
+        installed_paths = binding["installed_paths"]
+        config_path = binding.get("config_path") or installed_paths.get("installed-config")
+        if not config_path:
+            raise ValueError("effective config.toml path is missing from the preparation binding")
+        validate_config(Path(config_path))
+        for name, path in installed_paths.items():
+            if name == "installed-config":
+                continue
             asset = Path(path)
             if not asset.is_file() or sha(asset.read_bytes()) != expected["asset_fingerprints"][name]:
                 raise ValueError(f"missing or changed installed asset: {name}: {path}")
