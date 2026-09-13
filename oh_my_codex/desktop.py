@@ -50,7 +50,46 @@ def _desktop_prompt(root: Path, evidence_path: Path, helper_sha: str | None = No
         f"  - {role}: {row['path']}"
         for role, row in plan.items()
     )
+    canonical_helper = root / _preflight.HELPER
     return prompt + f"""
+
+PREFLIGHT COPY-SAFETY CONTRACT
+
+The single hash-pinned command printed earlier in this retained prompt is the CANONICAL
+PREFLIGHT COMMAND. For Explorer, Librarian, Fixer, and Oracle, immediately before each
+dispatch, copy that same command VERBATIM. Do not reconstruct it from role data and do
+not substitute a role's canary path into it.
+
+The canonical command's helper argument is always exactly:
+{canonical_helper}
+Every `.omc-probes/*-write.txt` path is a diagnostic CANARY target and MUST NEVER be used
+as the preflight helper argument. The final command argument is the pinned helper SHA
+already present in the canonical retained command; copy it, do not recompute or replace
+it.
+
+Before executing each dispatch gate, visually/structurally verify that the command still
+uses the preparation-time Python interpreter, contains `-I -S`, uses the exact helper
+path above, and does not contain any `.omc-probes/` canary path. Then execute it unchanged.
+
+A command that differs from the canonical retained command is NOT an authorized gate.
+If such a malformed command is accidentally executed, retain its exact command/output
+as a transcription-error note. If NO specialist was spawned and NO source/probe write
+occurred after that malformed attempt, immediately copy the canonical retained command
+verbatim and execute it once for that dispatch. If the canonical command passes, the
+dispatch may continue and `probe_preflight` may remain `VERIFIED` based on the canonical
+gates. Do not put the malformed command's incidental path into `observed_probe_paths`
+unless a diagnostic probe-write was actually attempted there.
+
+If the canonical retained command itself exits nonzero, STOP exactly as required by the
+main gate: do not retry it, do not delegate, do not write, and do not use an alternate
+gate. Never alter the Python environment, helper path, helper bytes, or pinned SHA to
+make a gate pass.
+
+Pre-dispatch checklist:
+- Explorer: copy and execute the canonical retained preflight command verbatim, then dispatch.
+- Librarian: copy and execute the canonical retained preflight command verbatim, then dispatch.
+- Fixer: copy and execute the canonical retained preflight command verbatim, then dispatch.
+- Oracle: copy and execute the canonical retained preflight command verbatim, then dispatch.
 
 MACHINE-ENFORCED EVIDENCE VALUE CONTRACT
 
