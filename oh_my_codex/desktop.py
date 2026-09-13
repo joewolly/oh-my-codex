@@ -7,6 +7,7 @@ does not automate Desktop and never treats a CLI/app-server process as Desktop p
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -66,7 +67,10 @@ def _preflight_command(root: Path, helper_sha: str) -> str:
                 "b=p.read_bytes(); ok=hashlib.sha256(b).hexdigest()==sys.argv[2]; "
                 "ok or sys.exit(json.dumps({'overall':'FAIL','error':'preflight helper identity mismatch','delegation':'STOP'})); "
                 "exec(compile(b,str(p),'exec'),{'__name__':'__main__','__file__':str(p)})")
-    return shlex.join(["python3", "-I", "-S", "-c", launcher, str(root / desktop_preflight.HELPER), helper_sha])
+    # Standard Base64 has no underscores for Desktop Markdown escaping to corrupt.
+    encoded = base64.b64encode(launcher.encode("utf-8")).decode("ascii")
+    wrapper = f'import base64;exec(base64.b64decode("{encoded}"))'
+    return shlex.join(["python3", "-I", "-S", "-c", wrapper, str(root / desktop_preflight.HELPER), helper_sha])
 
 
 def _helper_binding(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any]:

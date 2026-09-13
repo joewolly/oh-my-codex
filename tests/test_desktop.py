@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import contextlib
+import base64
 import io
 import hashlib
 import json
 import platform
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -586,6 +588,113 @@ class DesktopVerificationTests(unittest.TestCase):
         direct = self._run_gate([sys.executable, "-I", "-S", str(self.root / ".omc-probe-preflight.py")])
         self.assertEqual(direct.returncode, 0, direct.stderr + direct.stdout)
         self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+
+    def _retained_prompt_command(self):
+        prepared = prepare_desktop_fixture(self.root.parent / "final_fixture with spaces",
+                                           codex_home=self.codex, skills_home=self.skills)
+        # Retain the actual generated artifact outside the writable fixture, as
+        # in final acceptance. Never reconstruct the command from API fields.
+        artifact = self.root.parent / "activated-prompt.txt"
+        artifact.write_bytes(Path(prepared["prompt"]).read_bytes())
+        lines = [line for line in artifact.read_text().splitlines()
+                 if line.startswith("python3 -I -S -c ")]
+        self.assertEqual(len(lines), 1)
+        return prepared, lines[0]
+
+    def _run_prompt_command(self, command):
+        # Resolve the literal `python3` via an isolated PATH, without rewriting
+        # the prompt command, splitting/rejoining it, or substituting argv[0].
+        bindir = self.root.parent / "python bin with spaces"
+        bindir.mkdir(exist_ok=True)
+        python = bindir / "python3"
+        if not python.exists():
+            python.symlink_to(sys.executable)
+        return subprocess.run(command, shell=True, executable="/bin/sh", cwd=self.root.parent,
+                              env={"PATH": str(bindir) + os.pathsep + os.defpath},
+                              capture_output=True, text=True)
+
+    def test_exact_retained_prompt_command_no_import_outside_checkout_with_spaces(self):
+        prepared, command = self._retained_prompt_command()
+        unavailable = self._run_prompt_command("python3 -I -S -c 'import oh_my_codex'")
+        self.assertNotEqual(unavailable.returncode, 0)
+        self.assertIn("No module named 'oh_my_codex'", unavailable.stderr)
+        self.assertFalse(self.root.parent.is_relative_to(ROOT))
+        self.assertIn(" ", str(self.root.parent))
+        args = shlex.split(command)
+        self.assertEqual(args[:4], ["python3", "-I", "-S", "-c"])
+        self.assertEqual(args[5:], [prepared["preflight"], prepared["preflight_sha256"]])
+        self.assertIn(" ", args[5])
+        self.assertEqual(args[6], hashlib.sha256(Path(args[5]).read_bytes()).hexdigest())
+        fixture = Path(prepared["fixture"])
+        before = {p.relative_to(fixture): p.read_bytes() for p in fixture.rglob("*") if p.is_file()}
+        result = self._run_prompt_command(command)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(json.loads(result.stdout)["overall"], "PASS")
+        self.assertEqual(before, {p.relative_to(fixture): p.read_bytes() for p in fixture.rglob("*") if p.is_file()})
+
+    def test_retained_prompt_uses_standard_base64_without_raw_launcher_source(self):
+        _, command = self._retained_prompt_command()
+        wrapper = shlex.split(command)[4]
+        match = re.fullmatch(r'import base64;exec\(base64\.b64decode\("([A-Za-z0-9+/=]+)"\)\)', wrapper)
+        self.assertIsNotNone(match)
+        encoded = match.group(1)
+        self.assertNotIn("_", encoded)
+        self.assertNotIn("_", wrapper)
+        launcher = base64.b64decode(encoded, validate=True).decode("utf-8")
+        self.assertEqual(base64.b64encode(launcher.encode()).decode("ascii"), encoded)
+        for token in ("read_bytes", "__name__", "__file__", "st_nlink", "hashlib.sha256", "exec(compile"):
+            self.assertIn(token, launcher)
+            self.assertNotIn(token, command)
+
+    def test_retained_prompt_python_payload_survives_underscore_escaping(self):
+        _, command = self._retained_prompt_command()
+        wrapper = shlex.split(command)[4]
+        # Model the observed escaping of Python source in the -c payload only.
+        # Helper paths are separate data arguments (including an underscore here);
+        # this does not claim immunity to arbitrary mutation of paths or prose.
+        escaped = wrapper.replace("_", "\\_")
+        transformed = command.replace(shlex.quote(wrapper), shlex.quote(escaped), 1)
+        self.assertEqual(transformed, command)
+        result = self._run_prompt_command(transformed)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(json.loads(result.stdout)["overall"], "PASS")
+        # Establish that this transformation reproduces the old source failure.
+        launcher = base64.b64decode(wrapper.split('"')[1]).decode("utf-8")
+        with self.assertRaises(SyntaxError):
+            compile(launcher.replace("_", "\\_"), "escaped launcher", "exec")
+
+    def test_retained_prompt_wrong_sha_fails_closed(self):
+        prepared, command = self._retained_prompt_command()
+        digest = prepared["preflight_sha256"]
+        wrong = ("0" if digest[0] != "0" else "1") + digest[1:]
+        result = self._run_prompt_command(command.removesuffix(digest) + wrong)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("helper identity mismatch", result.stderr)
+        self.assertNotIn("PASS", result.stdout)
+
+    def test_retained_prompt_helper_replacement_symlink_hardlink_fail_closed(self):
+        prepared, command = self._retained_prompt_command()
+        helper = Path(prepared["preflight"])
+        retained = self.root.parent / "retained helper with spaces.py"
+        helper.rename(retained)
+        marker = self.root.parent / "tampered-helper-executed"
+        for mutation in ("symlink", "hardlink", "replacement"):
+            with self.subTest(mutation=mutation):
+                if mutation == "symlink":
+                    helper.symlink_to(retained)
+                elif mutation == "hardlink":
+                    helper.hardlink_to(retained)
+                else:
+                    helper.write_text("from pathlib import Path\nPath(" + repr(str(marker)) + ").touch()\n")
+                result = self._run_prompt_command(command)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("helper identity mismatch" if mutation == "replacement" else
+                              "canonical single-link regular file", result.stderr)
+                self.assertFalse(marker.exists())
+                self.assertNotIn("PASS", result.stdout)
+                helper.unlink()
+        helper.write_bytes(retained.read_bytes())
+        self.assertEqual(self._run_prompt_command(command).returncode, 0)
 
     def test_helper_generated_contained_fingerprinted_and_deterministic(self):
         from oh_my_codex import desktop

@@ -92,6 +92,10 @@ prepared prompt. It must return PASS. This standard-library launcher validates t
 helper's canonical regular-file identity and literal SHA-256 **before executing the
 same verified bytes**. Keep the original preparation output and prompt outside the
 writable fixture as the trust anchor; a subsequently edited prompt cannot replace it.
+The tiny `-c` wrapper decodes a standard Base64 launcher generated during preparation.
+Neither the wrapper nor its encoded body contains underscores, preventing Markdown
+underscore escaping from corrupting executable Python source. Helper paths and the
+pinned hash remain separate arguments; arbitrary prompt or path mutation is not covered.
 Directly executing a mutable script cannot authenticate that script, so shortening the
 mandatory command to an unchecked script invocation is not an equivalent gate.
 
