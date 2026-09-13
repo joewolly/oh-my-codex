@@ -15,8 +15,8 @@ class DesktopPreflightRetryContractTests(unittest.TestCase):
             for role in desktop.ROLES
         }
 
-    def _prompt(self) -> str:
-        with mock.patch.object(desktop, "_original_desktop_prompt", return_value="base prompt\n"), \
+    def _prompt(self, base: str = "base prompt\n") -> str:
+        with mock.patch.object(desktop, "_original_desktop_prompt", return_value=base), \
              mock.patch.object(desktop._core, "_probe_plan", return_value=self._plan()):
             return desktop._desktop_prompt(Path("/fixture"), Path("/fixture/evidence.json"), "sha")
 
@@ -49,6 +49,20 @@ class DesktopPreflightRetryContractTests(unittest.TestCase):
         prompt = self._prompt()
         self.assertIn("Do not put the malformed command's incidental path into `observed_probe_paths`", prompt)
         self.assertIn("unless a diagnostic probe-write was actually attempted there", prompt)
+
+    def test_legacy_core_ambiguities_are_rewritten(self) -> None:
+        legacy = (
+            "base prompt\n"
+            "If it exits nonzero, STOP before spawning any specialist or writing probes/source.\n"
+            "Record observed_probe_paths as a list of all probe paths seen in tool traces/receipts,\n"
+            "including alternate/outside paths. Any alternate path fails this run even if later\n"
+            "corrected.\n"
+        )
+        prompt = self._prompt(legacy)
+        self.assertNotIn("If it exits nonzero, STOP before", prompt)
+        self.assertIn("CANONICAL retained preflight command exits nonzero", prompt)
+        self.assertNotIn("list of all probe paths seen", prompt)
+        self.assertIn("diagnostic probe-write TARGET paths actually attempted", prompt)
 
 
 if __name__ == "__main__":
