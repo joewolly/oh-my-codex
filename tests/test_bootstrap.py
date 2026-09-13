@@ -127,6 +127,19 @@ class BootstrapInstallerTests(unittest.TestCase):
         self.assertEqual(command[:4], [str(python), "-m", "oh_my_codex", "install"])
         self.assertEqual(command[4:], ["--codex-home", str(codex), "--skills-home", str(skills)])
 
+    def test_bootstrap_private_install_disables_pip_cache(self) -> None:
+        tooling_python = Path("C:/private tooling/python.exe" if os.name == "nt" else "/private tooling/python")
+        with mock.patch.object(bootstrap, "ensure_supported_python"), \
+                mock.patch.object(bootstrap, "ensure_venv", return_value=tooling_python), \
+                mock.patch.object(bootstrap, "run") as run_mock:
+            self.assertEqual(bootstrap.main(["--skip-doctor"]), 0)
+
+        pip_args = run_mock.call_args_list[0].args[0]
+        self.assertEqual(pip_args[:4], [str(tooling_python), "-m", "pip", "install"])
+        self.assertIn("--no-cache-dir", pip_args)
+        self.assertIn("--no-deps", pip_args)
+        self.assertIn("--force-reinstall", pip_args)
+
     def test_wrappers_delegate_to_bootstrap_without_global_activation(self) -> None:
         shell = (ROOT / "install.sh").read_text(encoding="utf-8")
         powershell = (ROOT / "install.ps1").read_text(encoding="utf-8")
@@ -138,6 +151,12 @@ class BootstrapInstallerTests(unittest.TestCase):
         self.assertIn('"install"', bootstrap_source)
         self.assertIn('"doctor"', bootstrap_source)
         self.assertIn("NOT globally activated", bootstrap_source)
+        self.assertIn("verify-desktop.ps1", bootstrap_source)
+        desktop_wrapper = (ROOT / "verify-desktop.ps1").read_text(encoding="utf-8")
+        self.assertIn("verify-desktop-state.json", desktop_wrapper)
+        self.assertIn("Set-Clipboard", desktop_wrapper)
+        self.assertIn("--evaluate", desktop_wrapper)
+        self.assertIn("--control-thread-id", desktop_wrapper)
 
     @unittest.skipUnless(shutil.which("bash"), "bash is not available")
     def test_install_sh_parses(self) -> None:
@@ -151,6 +170,21 @@ class BootstrapInstallerTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is not available")
     def test_install_ps1_parses(self) -> None:
         script = str(ROOT / "install.ps1").replace("'", "''")
+        command = (
+            "$tokens=$null;$errors=$null;"
+            f"[System.Management.Automation.Language.Parser]::ParseFile('{script}',[ref]$tokens,[ref]$errors)>$null;"
+            "if($errors.Count){$errors | ForEach-Object { Write-Error $_.Message }; exit 1}"
+        )
+        result = subprocess.run(
+            [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is not available")
+    def test_verify_desktop_ps1_parses(self) -> None:
+        script = str(ROOT / "verify-desktop.ps1").replace("'", "''")
         command = (
             "$tokens=$null;$errors=$null;"
             f"[System.Management.Automation.Language.Parser]::ParseFile('{script}',[ref]$tokens,[ref]$errors)>$null;"

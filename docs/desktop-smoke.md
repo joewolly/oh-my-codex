@@ -1,14 +1,47 @@
 # Codex Desktop acceptance: two separate threads
 
-Codex Desktop on macOS is the Tier-1 acceptance surface. CLI/app-server results are
+Codex Desktop acceptance requires real observations in two fresh threads. CLI/app-server results are
 secondary diagnostics and cannot substitute for a fresh Desktop observation. The guided
 harness validates prepared fixture identity, role contracts, probe boundaries, evidence
 shape, and the current evaluator/build; it does not automate Desktop or turn model
 self-description into host proof.
 
-## Prepare the current build
+## Windows: normal operator flow
 
-After deliberately installing/updating the exact committed build being accepted, prepare
+From the repository checkout in PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+Fully quit and relaunch Codex Desktop, then run:
+
+```powershell
+.\verify-desktop.ps1
+```
+
+The wrapper prepares exactly one pending fixture, copies `control-prompt.txt` to the
+clipboard, and prints the control-thread instructions. When that thread is complete,
+rerun `.\verify-desktop.ps1`; it records the required operator control attestation,
+revalidates the still-untouched fixture/current managed assets, copies
+`desktop-prompt.txt`, and prints the distinct activated-thread instructions. After the
+activated thread finishes, rerun `.\verify-desktop.ps1`; it obtains any required IDs or
+versions and invokes the evaluator internally.
+
+The wrapper stores only small pending-run state under
+`%LOCALAPPDATA%\Oh-My-Codex\verify-desktop-state.json`. It binds every stage to the run
+ID, fixture, preparation timestamp, package version, baseline, and managed-asset
+fingerprints. A missing, expired, mismatched, or canonically failed run cannot be reused.
+`-Reset` archives wrapper state but never deletes the forensic fixture.
+
+If Windows blocks a downloaded script, use `Unblock-File` for the affected checkout
+scripts or a process-scoped execution policy for that one PowerShell session. A permanent
+machine-wide bypass is neither required nor recommended.
+
+## Advanced/developer preparation
+
+On macOS/Linux, or for lower-level Windows troubleshooting, after deliberately
+installing/updating the exact committed build being accepted, prepare
 with the installed Oh-My-Codex environment:
 
 ```bash
@@ -27,6 +60,11 @@ must execute the absolute interpreter path already present in the retained comma
 must not replace it with ambient `python3` or `python`. Regenerate the fixture after any
 package/evaluator or Oh-My-Codex-managed installed-asset change. User-owned
 `config.toml` is validated semantically at each gate rather than byte-pinned.
+
+On Windows, argv is deliberately serialized for PowerShell: every argument is
+single-quoted, embedded apostrophes are doubled, and the absolute executable is invoked
+with the call operator (`& 'C:\path with spaces\python.exe' '-I' '-S' ...`). macOS/Linux
+retain the existing POSIX representation.
 
 Keep the returned preparation output and generated prompt as the trust anchor. Do not
 relocate the prepared fixture or rewrite its prompt/helper/metadata.
@@ -147,9 +185,10 @@ The current tested macOS Desktop host may therefore produce:
 
 This is behavioral role isolation, not technical least-privilege enforcement.
 
-## Final evaluation
+## Advanced/developer final evaluation
 
-After filling both fresh evidence records, evaluate with the distinct thread IDs and
+The Windows wrapper performs this step. For lower-level development/CI, after filling
+both fresh evidence records, evaluate with the distinct thread IDs and
 current Desktop/bundled-Codex versions:
 
 ```bash
