@@ -96,7 +96,7 @@ function Require-Value([string]$Value, [string]$Prompt) {
 function Get-InstalledIdentity {
     return Invoke-ToolJson -Arguments @(
         '-c',
-        'import json; from oh_my_codex import __version__; from oh_my_codex.desktop import _asset_fingerprints; print(json.dumps({"package_version": __version__, "asset_fingerprints": _asset_fingerprints()}))'
+        'import json; from oh_my_codex import __version__; from oh_my_codex.desktop import _asset_fingerprints; print(json.dumps({''package_version'': __version__, ''asset_fingerprints'': _asset_fingerprints()}))'
     )
 }
 

@@ -97,7 +97,7 @@ try {
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $FatalStateRoot 'verify-desktop-state.json'))) 'terminal canonical failure must archive its wrapper state'
     Assert-True (Test-Path -LiteralPath $fixture -PathType Container) 'terminal canonical failure must preserve its forensic fixture'
 
-    $ChangedPackageAsset = & $ToolingPython -c 'import pathlib,oh_my_codex; print(pathlib.Path(oh_my_codex.__file__).parent / "verify.py")'
+    $ChangedPackageAsset = & $ToolingPython -c 'import pathlib,oh_my_codex; print(pathlib.Path(oh_my_codex.__file__).parent / ''verify.py'')'
     [System.IO.File]::AppendAllText($ChangedPackageAsset, '# simulate corrected installed build' + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
     $global:OmcWindowsCiClipboardText = ''
     $fresh = & $Wrapper *>&1
