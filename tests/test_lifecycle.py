@@ -56,8 +56,27 @@ class LifecycleTests(unittest.TestCase):
         first = lifecycle.install(self.codex, self.skills, source_root=self.source)
         second = lifecycle.install(self.codex, self.skills, source_root=self.source)
         self.assertEqual(first["overall"], "PASS")
+        self.assertTrue(first["restart_required"])
+        self.assertTrue(first["new_thread_required"])
+        self.assertIn("Astra", first["main_model_guidance"])
         self.assertEqual(second["installed"], [])
         self.assertTrue((self.codex / "oh-my-codex/manifest.json").exists())
+
+    def test_install_adds_capability_without_global_activation(self) -> None:
+        self.codex.mkdir(parents=True)
+        config = self.codex / "config.toml"
+        global_instructions = self.codex / "AGENTS.md"
+        config.write_text('model = "gpt-6-astra"\n', encoding="utf-8")
+        global_instructions.write_text("Ordinary Codex instructions.\n", encoding="utf-8")
+        before = {p: p.read_bytes() for p in (config, global_instructions)}
+        report = lifecycle.install(self.codex, self.skills)
+        self.assertFalse(report["globally_activated"])
+        self.assertEqual(report["activation_required"], "$oh-my-codex")
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+        policy = (self.skills / "oh-my-codex/agents/openai.yaml").read_text()
+        self.assertIn("allow_implicit_invocation: false", policy)
+        lifecycle.uninstall(self.codex, self.skills)
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
 
     def test_resolve_paths_environment_precedence_and_unicode(self) -> None:
         env_codex = self.base / "env home – 用户" / ".codex"

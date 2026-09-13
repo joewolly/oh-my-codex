@@ -695,7 +695,12 @@ def _install_impl(codex_home: str | os.PathLike[str] | None = None,
         _recover(codex, skills)
         raise
     _journal_path(codex).unlink(missing_ok=True)
+    restart_note = "Codex Desktop restart required; start a NEW Desktop thread before invoking $oh-my-codex (no hot reload assumed)"
+    model_note = "Select Astra (gpt-6-astra) or Sol (gpt-5.6-sol) as the main-thread model"
     return {"overall": "PASS", "version": __version__, "installed": installed, "backups": backups, "warnings": warnings,
+            "restart_required": True, "new_thread_required": True, "restart_guidance": restart_note,
+            "main_model_guidance": model_note,
+            "activation_required": "$oh-my-codex", "globally_activated": False,
             "lock_paths": _lock_paths(codex, skills)}
 
 
@@ -885,8 +890,10 @@ def doctor(codex_home: str | os.PathLike[str] | None = None,
         checks.append(_check("role declarations", "FAIL", f"static scan failed closed: {exc}"))
     # These are implementation limitations of current Codex role discovery,
     # not failures of correctly formed package templates.
-    checks.append(_check("Codex role capability notes", "PASS WITH NOTES", "Codex 0.152.1 (upstream b979d4f1) role.rs may ignore sandbox_mode and agents.* role overrides; V2 may ignore max_depth; live discovery is unverified"))
+    checks.append(_check("Codex role capability notes", "PASS WITH NOTES", "Known tested Desktop hosts have ignored valid per-role sandbox requests; behavioral compliance is not technical isolation. Retest effective permissions on future hosts; static configuration remains valid."))
+    checks.append(_check("Desktop verification", "PASS WITH NOTES", "STATIC ONLY: Codex Desktop discovery, effective permissions, and behavior are unverified; restart and a NEW Desktop thread are required after installation"))
     warnings.append("static doctor does not verify provider availability or live role discovery")
+    warnings.append("Desktop behavior is unverified; run `oh-my-codex verify-desktop --prepare` and complete the guided smoke test")
     has_fail = any(item["status"] == "FAIL" for item in checks)
     overall = "FAIL" if has_fail else ("PASS WITH NOTES" if warnings or any(item["status"] == "PASS WITH NOTES" for item in checks) else "PASS")
     return {"overall": overall, "checks": checks, "warnings": warnings, "lock_paths": _lock_paths(codex, skills)}

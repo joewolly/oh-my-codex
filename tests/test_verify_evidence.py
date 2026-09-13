@@ -327,6 +327,9 @@ class AdversarialVerifierEvidenceTests(unittest.TestCase):
                     timeout=2,
                     keep_artifacts=True,
                 )
+            self.assertEqual(report["verification_label"], "LOW-LEVEL RUNTIME VERIFICATION")
+            self.assertEqual(report["surface"], "CODEX_CLI_APPSERVER")
+            self.assertFalse(report["desktop_verified"])
             artifact_dir = Path(report["provenance"]["artifact_dir"])
             try:
                 self.assertFalse(report["fixture"]["target_corrected"])

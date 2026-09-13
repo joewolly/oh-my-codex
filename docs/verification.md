@@ -3,7 +3,271 @@
 This is a dated campaign record. It reports observed checks and their limits; an
 unexecuted check is not represented as a pass.
 
-## Baseline
+## Self-contained Desktop preflight repair — 2026-09-13 UTC
+
+Started clean on `codex/desktop-first` at
+`5fbb39c7eba4d0a4039a07f035ca4e2781af99ef`, matching `origin/codex/desktop-first`.
+Development ran directly in the main task without activating Oh-My-Codex or delegating.
+No role/skill/policy assets, models, efforts, sandboxes, orchestration architecture,
+readiness classification rules, or live installation were changed.
+
+The user-reported ordinary no-skill control **passed**. The activated thread then
+stopped before delegation with `No module named oh_my_codex`: the generated gate
+assumed the development package was importable in a fresh Desktop interpreter,
+although live installation supplies capability assets. No specialists, probes, source
+changes or effective-permission tests ran. This was a harness defect, not an observed
+orchestration failure; that run supplies no orchestration acceptance evidence.
+
+Preparation now emits `.omc-probe-preflight.py` from a small standard-library module.
+The generated `python3 -I -S -c` launcher pins its SHA-256 and checks its bytes before
+execution. Metadata and activated evidence bind the helper identity; the helper checks
+preparation identity, prompt, baseline, canonical paths, installed hashes and fixture
+state. The package evaluator regenerates the helper without executing fixture code.
+The original preparation prompt/hash must be retained outside the mutable fixture.
+This is neither self-authentication of arbitrary code nor a race-proof sandbox.
+All `..` components now fail, including formerly accepted normalization inside the root.
+
+Observed development validation:
+
+- Python 3.11.16: **151 tests passed**; Python 3.12.14: **151 tests passed**.
+  The Desktop suite has **66 tests**, with 16 new executable/identity regressions.
+- The required no-import test proves `import oh_my_codex` raises ModuleNotFoundError
+  under the same isolated interpreter flags, sanitized environment and outside-checkout
+  cwd where the actual generated prompt command returns PASS. Paths with spaces work;
+  the valid gate leaves every fixture file byte-identical.
+- Metadata/probe-plan/prompt/baseline/source tampering, every changed or missing installed
+  asset, unsafe paths, symlinks, hard links, replaced probe parents, relocated helpers,
+  stale evidence and wrong canary bytes fail closed. A malicious helper is rejected
+  before its sentinel code executes. Existing control and host-limit classifications
+  remain covered and green.
+- Compilation on both interpreters and `git diff --check` passed. The complete focused
+  code/test/documentation diff was reviewed directly.
+- Wheel and source distribution built with `uv build --python python3.11`.
+  All **13 package code/asset files**, both legal notices and the CLI entry point were
+  verified; the wheel installed into an isolated Python 3.11 venv and the sdist built
+  and installed into a separate Python 3.12 venv. All **66 Desktop tests** and a separate
+  explicit no-import test passed against the wheel from outside the checkout.
+- Final packaged lifecycle: install 6, repeat install 0, upgrade 1, restore 1,
+  uninstall 6, repeat uninstall 0, reinstall 6, final uninstall 6. Config/instruction
+  sentinels remained identical. Both isolated Doctor runs returned **PASS WITH NOTES**
+  (static proof only; provider execution was intentionally absent).
+- A fresh packaged fixture passed preflight with package import unavailable. Its
+  relocated copy exited 2; a malicious helper copy exited 1 without execution.
+- Initial `python -m build` was unavailable in the development interpreter; isolated
+  `uv build` succeeded. One repeat lifecycle command was accidentally launched from
+  the checkout and correctly rejected discovered live-role conflicts; rerunning from
+  the intended isolated cwd passed. No live installed asset was modified.
+- Live role/skill/policy/configuration and global-instruction snapshot hashes remained
+  unchanged. No fresh Desktop workflow, permission probe or acceptance was run.
+- Logs, distributions and isolated validation records are retained under
+  `/private/tmp/omc-self-contained-campaign/`.
+
+The earlier control PASS remains historical evidence with unchanged activation
+semantics. Reuse for final acceptance is not supported by the existing schema-4 model:
+its full code fingerprints and fixture/run/preparation bindings changed. A new neutral
+control is therefore required; no old evidence was restamped. Schema remains 4 with
+preflight contract 1 and mandatory activated helper-digest binding. Fresh Desktop core
+and permission acceptance remain unverified. The known Codex sandbox limitation and
+its readiness treatment remain unchanged.
+
+Final commit/push identity and prepared, unexecuted acceptance artifact paths are
+reported in the task response. No live update, merge, tag, release or publication is
+part of this campaign.
+
+## Acceptance-harness correction — 2026-09-13 UTC
+
+Started from clean `codex/desktop-first` at
+`cb52309fe4bcd49a5b6bf6f4d8b41ab4a4964363`, matching the remote. Development was
+performed directly in the main task without activating `$oh-my-codex`, delegating,
+changing live installation assets, or running live acceptance probes. Architecture,
+role prompts, model/effort/sandbox assignments and explicit activation policy remain
+byte-identical to the starting commit.
+
+Schema 4 adds a canonical harness-owned probe manifest, read-only pre-dispatch gate,
+exact canary bytes, reported-path checks, and a separately identified ordinary-thread
+control. Fresh final acceptance requires control PASS and probe-boundary PASS alongside
+core/behavioral PASS. Current Codex host sandbox inheritance remains a host limitation;
+exhaustive filesystem auditing is not claimed. See the two exact prompt procedures in
+[Desktop acceptance](desktop-smoke.md).
+
+The latest user-reported Desktop run against `cb52309…` remains **FAIL**: Librarian's
+outside-fixture diagnostic write violated the procedure, and the independent no-skill
+control was unverified. Its successful ordinary orchestration and broader inherited
+permissions do not erase that failure. No historical evidence was rewritten or promoted
+to fresh acceptance. Final schema-4 live Desktop acceptance remains **UNVERIFIED** until
+the deliberate update and two separate fresh threads are completed.
+
+Validation for this correction:
+
+- Python 3.11.16: **135 tests passed**; Python 3.12.14: **135 tests passed**.
+  The 50 Desktop tests include 24 new regression tests; prior tests remain covered.
+- Source compilation and whitespace checks passed; the full source/test/docs diff was
+  reviewed directly. Six files changed; role/skill/policy assets are unchanged.
+- Wheel and source distribution built in an isolated source copy. Eight package
+  code/asset files matched byte-for-byte, and legal notices were present. The wheel
+  installed into a temporary venv with spaces in its path; all 50 Desktop evaluator
+  tests passed against that installed package.
+- Isolated lifecycle: install 6, repeat install 0, upgrade 1 with 1 backup, uninstall 6,
+  repeat uninstall 0, reinstall 6, final uninstall 6. Config/global-instruction sentinels
+  stayed byte-identical. Doctor **PASS WITH NOTES** (static evidence only).
+- Packaged fixture preparation and preflight passed; unrun control remained UNVERIFIED.
+  The 17-file live installation/configuration snapshot remained unchanged.
+- Local validation artifacts are retained under
+  `/private/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc acceptance hardening cxodevlq/`.
+  These results do not claim hosted CI or fresh Desktop runtime acceptance.
+
+Commit/push identity and generated final prompt paths are reported in the task's final
+response. No merge, tag, release, package publication, live update, or live activation
+is part of this correction.
+
+## Readiness finalization — 2026-09-12 (2026-09-13 UTC)
+
+Started on `codex/desktop-first` at
+`f8c7c2a466b13d3b35664e1bfbf20564e191b873`, preserving all 14 existing changed files.
+The main Astra task implemented and reviewed this campaign directly; `$oh-my-codex`
+was not invoked and the installed orchestration layer did not self-host development.
+The five-role architecture, models, efforts, and intended sandboxes are unchanged.
+The complete Desktop-first and readiness diff is finalized together on this branch;
+commit and remote identity are reported in the task's final response.
+
+### New readiness semantics
+
+Schema 3 separates core workflow, behavioral role isolation, strict sandbox isolation,
+evidence validity, daily use, and strict least-privilege readiness. Valid current core
+PASS plus host-blocked strict isolation yields **PASS WITH HOST LIMITATION**. Wrong
+project configuration remains FAIL; insufficient host attribution remains UNVERIFIED.
+Successful canaries remain on disk with recorded hashes. Unsupported model routing,
+main implementation, missing dependency barriers, Fixer failure, or missing required
+Oracle verdict still fail core readiness. A confirmed future sandbox/probe match yields
+strict PASS and removes the host warning.
+
+Parent-model evidence is explicitly machine verified, Desktop/user-state verified,
+inferred, or unverified. Machine metadata absence alone does not block daily readiness.
+Hard nesting, UI, and exhaustive attribution can remain unverified with notes; confirmed
+behavioral violations still fail. Target Fixer patch attribution is separate and required.
+
+Installation remains additive capability installation. Policy still has
+`allow_implicit_invocation: false`; only `$oh-my-codex` activates the thread contract.
+Tests verify installation preserves config and global AGENTS.md bytes. No live user
+installation, global instructions, or activation state was modified in this campaign.
+Read-only before/after SHA-256 snapshots cover 16 live configuration/managed/backup
+paths. No merge, tag, release, package publication, or live activation is performed.
+
+### Desktop observations versus final-build acceptance
+
+The detailed original evidence (root `01a0985c-9ba1-7102-810d-8bf7bb3f4523`) supports:
+
+| Property | Recorded session result |
+| --- | --- |
+| Skill loading and named role discovery | VERIFIED |
+| Core task behavior, dependencies, reconciliation | PASS |
+| Model/effort routing for all specialists | VERIFIED |
+| Parent Astra/high | MACHINE_VERIFIED in retained host turn context |
+| Main nonimplementation | VERIFIED |
+| Explorer investigation / Librarian official research | VERIFIED |
+| Fixer target, passing test, structured receipt | VERIFIED |
+| Oracle target review / planted defect verdict | PASS / correctly returned FAIL |
+| Behavioral implementation boundaries | PASS (authorized probes excluded) |
+| Host-enforced least privilege | BLOCKED BY CODEX HOST for that tested session |
+| Hard specialist nesting / UX / exhaustive attribution | UNVERIFIED |
+| Target Fixer patch attribution | VERIFIED by retained tool records and hashes |
+
+| Specialist | Model / effort observed | Configured sandbox | Effective sandbox observed |
+| --- | --- | --- | --- |
+| Explorer | Luna / medium | read-only | danger-full-access |
+| Librarian | Luna / high | read-only | danger-full-access |
+| Fixer | Luna / high | workspace-write | danger-full-access |
+| Oracle | Sol / high | read-only | danger-full-access |
+
+The environment represented by that metadata is Desktop `26.908.40834`, build `8881`,
+bundled Codex `0.154.0-alpha.6.2`, macOS `26.6.2 (25G83) arm64`.
+All three read-only canaries succeeded. Correct requests plus broader inherited host
+permissions support the disclosed host limitation; no supported project remedy was
+established in the prior investigation. Prompt compliance is not technical isolation.
+
+The later **Run Desktop smoke test** task, root
+`01a0986f-3e15-79b0-ba9c-20a417e8045a`, completed at approximately
+`2026-09-13T01:50:18Z` in fixture `omc-desktop-smoke-5esiotud`. It independently
+confirmed four named roles, dependency ordering, Fixer implementation and receipt,
+Oracle review/planted defect detection, and three successful adversarial writes.
+`python` was unavailable (exit 127); `python3` passed one target test. Its own record
+kept parent/child model, effort, effective sandbox labels, Desktop/runtime versions,
+and restart UNVERIFIED because it did not inspect host metadata outside the fixture.
+The user reports fresh post-restart discovery. That is user-state evidence; these two
+artifacts are not silently merged into a new machine-verified session.
+
+**Final-build Desktop acceptance: UNVERIFIED; old evidence rejected.** Both retained
+schema-2 artifacts were replayed unchanged through the new evaluator and returned
+`overall: FAIL`, `evidence_validity: FAIL`, `desktop_verified: false`. Package/evaluator
+and skill changes invalidate their fingerprints. They also lack the new explicit
+normal-thread control and host-cause fields. No old fingerprint, schema, or timestamp
+was rewritten. The historical behavior table above is not a passing final-build report.
+A fresh Desktop smoke after deliberate installation is needed for that acceptance;
+no new live probe or activation was performed as part of development.
+
+Normal daily Desktop use is acceptable with the disclosed host limitation when current
+core evidence qualifies. Strict least-privilege use is not recommended on the tested
+host. This build is prepared for deliberate later installation/acceptance, not activated.
+
+### Automated, packaging, lifecycle, and review evidence
+
+- Full suite: 111 tests passed on Python 3.11.16 and 111 on Python 3.12.14.
+- Source compilation and whitespace/diff checks passed. The full combined diff was
+  reviewed directly by the main task, including role invariants and failure paths.
+- Wheel and source distribution built from a temporary source copy outside the checkout.
+  The wheel installed in an isolated venv at a path containing spaces. All four roles,
+  the explicit skill/policy, Desktop evaluator, LICENSE, and third-party notices were
+  present. No package was published.
+- Isolated lifecycle: install 6, repeated install 0, upgrade changed 1 with 1 backup,
+  Doctor PASS WITH NOTES, uninstall 6, repeated uninstall 0, reinstall 6, final uninstall 6.
+  Config and global-instruction sentinels remained byte-identical.
+- Preparation of an unverified schema-3 fixture was tested against isolated roots;
+  preparation does not run the skill. No new live Desktop smoke was dispatched.
+- Existing low-level protocol/parser/adversarial tests passed, including explicit
+  LOW-LEVEL RUNTIME VERIFICATION and `desktop_verified: false` assertions. A new live
+  app-server run was unnecessary for this classifier change; historical low-level
+  permission failures remain separate and unchanged.
+- Validation logs, package/lifecycle receipts, historical replay reports, and live-asset
+  hash snapshots are retained locally under `/tmp/omc-readiness-campaign/`. These local
+  tests do not claim hosted CI execution or fresh Desktop runtime acceptance.
+
+## Prior Desktop-first campaign — 2026-09-12
+
+This section records the previous campaign at its stop point, before the readiness
+finalization below was implemented. Its binary activation conclusions and live-install
+actions are historical, not the current policy or actions of this campaign.
+
+## Source state
+
+The campaign started from clean tracking `main` at `f8c7c2a466b13d3b35664e1bfbf20564e191b873`, with `origin` at the same head. At that stop point, `codex/desktop-first` remained at that head with 14 uncommitted files, zero commits, and no push, merge, tag, release, or publish. The five-role architecture is unchanged; only Fixer implemented repository changes.
+
+## Static/Doctor
+
+Package and installation shape checks passed. Doctor reported `PASS WITH NOTES` and remains static evidence only; it makes no whole-runtime enforcement claim.
+
+## Automated tests and packaging
+
+`95` tests passed on Python 3.11.16 and 3.12.14; compile and diff checks passed. The wheel installed outside the checkout in a path containing spaces at `/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc desktop verified packaging r5v5lcin` with all four roles and legal assets intact. The disposable lifecycle measured `install 6`, idempotent `install 0`, `doctor PASS WITH NOTES`, `uninstall 6`, repeat `uninstall 0`, reinstall `6`, and final uninstall `6`. The real user install changed four managed assets (three read-only role prompts and the skill), then reinstall was `0`; configuration remained byte-preserved.
+
+## Low-level runtime
+
+The final low-level run was a separate Codex 0.152.1 V2 app-server process with a 600-second timeout. All five turns completed, but the result was `FAIL`: models and efforts were correct, while all three intended read-only roles and Fixer were effectively `workspace-write`. The exact Fixer patch and protected fixture were observed. Its root was `01a0985c-a03a-7ef0-a53f-a11c4617d842`; the report is `/Users/joe/Documents/Codex/2026-09-12/oh-my-codex-desktop-smoke/outputs/low-level-evaluation.json`, with original events at `/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc-verify-artifacts-6p2q4lr5`. A prior 300-second attempt timed out. The inherited user-agent string mentioning Desktop does not change the explicit app-server surface classification.
+
+## Codex Desktop runtime
+
+The supported Desktop task was a distinct fresh task with root `01a0985c-9ba1-7102-810d-8bf7bb3f4523`, Astra/high, Desktop `26.908.40834` build `8881`, embedded runtime `0.154.0-alpha.6.2`, and macOS `26.6.2 (25G83) arm64`. Explorer `01a0985d-107f-7803-9fe7-a8a7a4469c63` was Luna/medium, Librarian `01a0985d-3a0e-7b82-b8ac-c2d91a503b51` Luna/high, Fixer `01a0985e-99a0-7483-8542-dd41cb7d39a5` Luna/high, and Oracle `01a0985f-f951-7760-8275-6b45b7e45140` Sol/high. All four inherited `danger-full-access`; Explorer, Librarian, and Oracle canary writes succeeded and therefore failed the permission gate. Fixer’s typed target patch, probe, and one-of-one test passed, but its effective sandbox failed the exact configured-sandbox check. Main-thread nonimplementation and dependency reconciliation were observed; nesting enforcement and exhaustive write attribution remained unverified. Skill loading and fresh-task discovery were verified. The smoke Oracle target/receipt review passed, and its planted fixture review correctly returned `FAIL` for the unchanged `average([])` defect (`expected 0`, observed `ZeroDivisionError`). Separately, the implementation Oracle returned final `PASS WITH NOTES` after the gate corrections, with no required corrections.
+
+The prior binary Desktop evaluator reported `FAIL / BLOCKED`: read-only canaries and exact sandbox failed, restart/post-restart discovery was not executed, and the smoke evidence was stale against the corrected package fingerprint. The observed role and skill behavior was unchanged during the task, so the permission result remains valid evidence for that tested Desktop session/configuration; it is not acceptance of the final build. CUA explicitly rejected the Codex UI for safety, so no restart bypass was attempted.
+
+## Evidence and remaining steps
+
+Static `doctor` evidence covers package shape, installed assets, role TOMLs, and configuration parsing. Automated tests cover lifecycle safety, protocol parsing, and the guided Desktop evaluator's positive and negative cases. `verify` is low-level CLI/app-server evidence from a separate process; its pass never authorizes Desktop and its failure does not veto a current, correctly evaluated Desktop report. `verify-desktop` is the authoritative macOS Desktop gate: local checks are automated, while observed Desktop routing, effective permissions, restart/new-thread discovery, and UI facts are operator attestation bound to current hashes, versions, timestamps, and thread identity. An absent or stale Desktop report blocks strict activation. Historical low-level records are retained below as dated history and are not current Desktop results.
+
+Artifacts are retained under `/Users/joe/Documents/Codex/2026-09-12/oh-my-codex-desktop-smoke/outputs/` (`desktop-evaluation.json`, `desktop-evidence.json`, `desktop-host-observations.json`, `packaging-validation.json`, and `low-level-evaluation.json`). The completed fixture was `/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc-desktop-smoke-fc5zuv0s`; the then-fresh fixture was `/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc-desktop-smoke-5esiotud`, which was subsequently executed in the later task described above. Normalized receipt validation records the actual successful test as `PASS` while retaining raw wording/detail; failures are not converted.
+
+## Historical implementation campaign
+
+### Baseline
 
 On 2026-09-12 the checkout was on an unborn `main` branch with no commit SHA. The
 `origin` remote was empty at `https://github.com/joewolly/oh-my-codex`. The delivered
@@ -11,7 +275,7 @@ scope is a clean, fresh stdlib Python 3.11+ package at version 1.0.0 with exactl
 conceptual roles: the user-selected main-thread Orchestrator plus four custom roles.
 It has no product dependency on another orchestration framework.
 
-## Proven local and packaging evidence
+### Proven local and packaging evidence
 
 The parent built a wheel from the checkout and installed it with `pip --target` into a
 temporary path containing spaces outside the checkout. The package assets and legal
@@ -42,9 +306,9 @@ filesystem remains outside the guarantees of these checks.
 
 Python 3.11.16 and 3.12.14 each passed 84 tests in the final automated runs.
 
-## Runtime evidence and limits
+### Historical low-level runtime
 
-The final native V2 run on macOS 26.6.2 arm64 with Codex 0.152.1 was `FAIL`. Its root
+The earlier native V2 run on macOS 26.6.2 arm64 with Codex 0.152.1 was `FAIL`. Its root
 was `01a0982b-8114-7401-a595-dc81af445193`; the retained report is
 `/var/folders/fx/zt2_vgtn387gqfkh3h8j_2kr0000gn/T/omc-verify-artifacts-3oyft6rs/report.json`
 with `events.jsonl` alongside it. All five turns completed, and bound host execution
