@@ -180,6 +180,9 @@ if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) {
         control_evidence = [string]$prepared.control_evidence
         desktop_prompt = [string]$prepared.prompt
         desktop_evidence = [string]$prepared.evidence
+        control_thread_id = ''
+        desktop_version = ''
+        runtime_version = ''
     }
     Write-State $state
     Copy-Prompt $state.control_prompt

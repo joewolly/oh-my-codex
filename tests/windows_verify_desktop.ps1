@@ -43,7 +43,7 @@ try {
     $CanonicalScript = Join-Path $TestRoot 'retained-preflight.ps1'
     [System.IO.File]::WriteAllText(
         $CanonicalScript,
-        $canonical[0] + [Environment]::NewLine,
+        $canonical[0] + [Environment]::NewLine + 'exit $LASTEXITCODE' + [Environment]::NewLine,
         [System.Text.Encoding]::Unicode
     )
     & $PowerShellExe -NoProfile -NonInteractive -File $CanonicalScript

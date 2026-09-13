@@ -633,9 +633,9 @@ class DesktopVerificationTests(unittest.TestCase):
         prepared, command = self._retained_prompt_command()
         wrapper = (desktop_core._preflight_argv(Path(prepared["fixture"]), prepared["preflight_sha256"])[4]
                    if os.name == "nt" else shlex.split(command)[4])
-        match = re.fullmatch(r'import base64;exec\(base64\.b64decode\("([A-Za-z0-9+/=]+)"\)\)', wrapper)
+        match = re.fullmatch(r'import base64;exec\(base64\.b64decode\((["\'])([A-Za-z0-9+/=]+)\1\)\)', wrapper)
         self.assertIsNotNone(match)
-        encoded = match.group(1)
+        encoded = match.group(2)
         self.assertNotIn("_", encoded)
         self.assertNotIn("_", wrapper)
         launcher = base64.b64decode(encoded, validate=True).decode("utf-8")
@@ -660,7 +660,9 @@ class DesktopVerificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertEqual(json.loads(result.stdout)["overall"], "PASS")
         # Establish that this transformation reproduces the old source failure.
-        launcher = base64.b64decode(wrapper.split('"')[1]).decode("utf-8")
+        match = re.fullmatch(r'import base64;exec\(base64\.b64decode\((["\'])([A-Za-z0-9+/=]+)\1\)\)', wrapper)
+        self.assertIsNotNone(match)
+        launcher = base64.b64decode(match.group(2)).decode("utf-8")
         with self.assertRaises(SyntaxError):
             compile(launcher.replace("_", "\\_"), "escaped launcher", "exec")
 

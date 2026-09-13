@@ -91,7 +91,12 @@ def _preflight_argv(root: Path, helper_sha: str, *, executable: str = "python3")
                 "exec(compile(b,str(p),'exec'),{'__name__':'__main__','__file__':str(p)})")
     # Standard Base64 has no underscores for Desktop Markdown escaping to corrupt.
     encoded = base64.b64encode(launcher.encode("utf-8")).decode("ascii")
-    wrapper = f'import base64;exec(base64.b64decode("{encoded}"))'
+    # Windows PowerShell's legacy native-command marshaller removes embedded
+    # double quotes from argv values. A Python single-quoted Base64 literal is
+    # semantically identical and survives both Windows PowerShell and pwsh.
+    # Retain the existing POSIX payload byte-for-byte.
+    wrapper = (f"import base64;exec(base64.b64decode('{encoded}'))" if os.name == "nt"
+               else f'import base64;exec(base64.b64decode("{encoded}"))')
     return [executable, "-I", "-S", "-c", wrapper, str(root / desktop_preflight.HELPER), helper_sha]
 
 
