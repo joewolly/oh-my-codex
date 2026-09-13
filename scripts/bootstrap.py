@@ -146,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         "pip",
         "install",
         "--disable-pip-version-check",
+        "--no-cache-dir",
         "--no-deps",
         "--force-reinstall",
         str(ROOT),
@@ -166,8 +167,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     print("Oh-My-Codex capability is installed. It is NOT globally activated.")
-    print("Fully quit and relaunch Codex Desktop, start a NEW thread, select Astra or Sol,")
-    print("then explicitly invoke $oh-my-codex before the task you want orchestrated.")
+    if os.name == "nt":
+        print("Next: .\\verify-desktop.ps1")
+    else:
+        print("Fully quit and relaunch Codex Desktop, start a NEW thread, select Astra or Sol,")
+        print("then explicitly invoke $oh-my-codex before the task you want orchestrated.")
     return 0
 
 

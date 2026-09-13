@@ -5,6 +5,8 @@ import os
 import shlex
 import subprocess
 import sys
+import shutil
+import unittest
 from pathlib import Path
 
 from desktop_suite import DesktopVerificationTests as _DesktopVerificationTests
@@ -23,7 +25,16 @@ class DesktopVerificationTests(_DesktopVerificationTests):
 
     def _gate_command(self):
         prompt = (self.root / "desktop-prompt.txt").read_text()
-        expected_helper = str(self.root / ".omc-probe-preflight.py")
+        expected = desktop_core._preflight_argv(
+            self.root,
+            self.metadata["preflight_sha256"],
+            executable=str(Path(sys.executable).expanduser().absolute()),
+        )
+        literal = desktop_core._serialize_shell_argv(expected)
+        self.assertEqual(prompt.count(literal), 1)
+        if os.name == "nt":
+            return expected
+        expected_helper = expected[-2]
         matches = []
         for line in prompt.splitlines():
             try:
@@ -45,19 +56,17 @@ class DesktopVerificationTests(_DesktopVerificationTests):
                                            codex_home=self.codex, skills_home=self.skills)
         artifact = self.root.parent / "activated-prompt.txt"
         artifact.write_bytes(Path(prepared["prompt"]).read_bytes())
-        expected_helper = prepared["preflight"]
-        lines = []
-        for line in artifact.read_text().splitlines():
-            try:
-                args = shlex.split(line)
-            except ValueError:
-                continue
-            if len(args) >= 7 and args[1:4] == ["-I", "-S", "-c"] and args[-2] == expected_helper:
-                lines.append(line)
+        lines = [line for line in artifact.read_text().splitlines()
+                 if line == prepared["preflight_command"]]
         self.assertEqual(len(lines), 1)
         return prepared, lines[0]
 
     def _run_prompt_command(self, command):
+        if os.name == "nt":
+            powershell = shutil.which("pwsh") or shutil.which("powershell")
+            self.assertIsNotNone(powershell)
+            return subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+                                  cwd=self.root.parent, capture_output=True, text=True)
         args = shlex.split(command)
         self.assertEqual(args[1:4], ["-I", "-S", "-c"])
         return subprocess.run(args, cwd=self.root.parent, capture_output=True, text=True)
@@ -76,7 +85,11 @@ class DesktopVerificationTests(_DesktopVerificationTests):
                                      cwd=self.root.parent, capture_output=True, text=True)
         self.assertNotEqual(unavailable.returncode, 0)
         self.assertIn("No module named 'oh_my_codex'", unavailable.stderr)
-        args = shlex.split(command)
+        args = desktop_core._preflight_argv(
+            Path(prepared["fixture"]),
+            prepared["preflight_sha256"],
+            executable=str(Path(sys.executable).expanduser().absolute()),
+        ) if os.name == "nt" else shlex.split(command)
         self.assertEqual(Path(args[0]), Path(sys.executable).expanduser().absolute())
         self.assertEqual(args[1:4], ["-I", "-S", "-c"])
         self.assertEqual(args[5:], [prepared["preflight"], prepared["preflight_sha256"]])
@@ -111,7 +124,10 @@ class DesktopVerificationTests(_DesktopVerificationTests):
             codex_home=self.codex,
             skills_home=self.skills,
         )
-        result = self._run_gate(shlex.split(prepared["preflight_command"]))
+        result = self._run_gate(desktop_core._preflight_argv(
+            Path(prepared["fixture"]), prepared["preflight_sha256"],
+            executable=str(Path(sys.executable).expanduser().absolute()),
+        ))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_direct_core_prepared_fixture_preflight_is_compatible(self) -> None:
@@ -122,10 +138,50 @@ class DesktopVerificationTests(_DesktopVerificationTests):
         )
         # Direct core callers retain the legacy ambient-python command contract;
         # the public Desktop facade used by the CLI binds the preparation Python.
-        result = subprocess.run([sys.executable, *shlex.split(prepared["preflight_command"])[1:]],
+        args = desktop_core._preflight_argv(
+            Path(prepared["fixture"]), prepared["preflight_sha256"], executable=sys.executable
+        )
+        result = subprocess.run(args,
                                 cwd=self.root.parent, env={"PATH": os.defpath, "PYTHONPATH": ""},
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_posix_preflight_serialization_is_unchanged(self) -> None:
+        args = ["/tmp/Python Tool/python", "-I", "-S", "-c", "print('ok')", "/tmp/helper path", "abc123"]
+        self.assertEqual(desktop_core._serialize_shell_argv(args, windows=False), shlex.join(args))
+
+    def test_powershell_serializer_escapes_spaces_and_apostrophes(self) -> None:
+        args = [r"C:\Users\Test User\O'Brien\python.exe", "-I", "-S", "-c", "print('ok')",
+                r"C:\Users\Test User\O'Brien\.omc-probe-preflight.py", "abc123"]
+        command = desktop_core._serialize_shell_argv(args, windows=True)
+        self.assertEqual(
+            command,
+            "& 'C:\\Users\\Test User\\O''Brien\\python.exe' '-I' '-S' '-c' "
+            "'print(''ok'')' 'C:\\Users\\Test User\\O''Brien\\.omc-probe-preflight.py' 'abc123'",
+        )
+
+    @unittest.skipUnless(os.name == "nt", "literal retained PowerShell execution is Windows-only")
+    def test_exact_retained_command_executes_through_powershell_unchanged(self) -> None:
+        prepared, command = self._retained_prompt_command()
+        self.assertTrue(command.startswith("& '"))
+        self.assertIn(" '-I' '-S' '-c' ", command)
+        result = self._run_prompt_command(command)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(prepared["preflight"], str(Path(prepared["fixture"]) / ".omc-probe-preflight.py"))
+
+    @unittest.skipUnless(os.name == "nt", "PowerShell argv execution is Windows-only")
+    def test_powershell_apostrophe_argument_round_trips(self) -> None:
+        powershell = shutil.which("pwsh") or shutil.which("powershell")
+        self.assertIsNotNone(powershell)
+        marker = r"C:\Users\Test User\O'Brien\fixture"
+        command = desktop_core._serialize_shell_argv(
+            [sys.executable, "-I", "-S", "-c", "import sys;print(sys.argv[1])", marker],
+            windows=True,
+        )
+        result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(result.stdout.strip(), marker)
 
     def test_malformed_user_config_fails_preflight(self) -> None:
         (self.codex / "config.toml").write_text('[agents\n', encoding="utf-8")

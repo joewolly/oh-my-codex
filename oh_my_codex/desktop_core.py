@@ -56,7 +56,23 @@ def _probe_plan(root: Path) -> dict[str, Any]:
     }
 
 
-def _preflight_command(root: Path, helper_sha: str) -> str:
+def _powershell_quote(argument: str) -> str:
+    """Quote one argv element for literal PowerShell invocation."""
+    return "'" + argument.replace("'", "''") + "'"
+
+
+def _serialize_shell_argv(args: list[str], *, windows: bool | None = None) -> str:
+    """Serialize argv for the host shell without changing argument semantics."""
+    if windows is None:
+        windows = os.name == "nt"
+    if windows:
+        if not args:
+            raise ValueError("cannot serialize an empty PowerShell command")
+        return "& " + " ".join(_powershell_quote(argument) for argument in args)
+    return shlex.join(args)
+
+
+def _preflight_argv(root: Path, helper_sha: str, *, executable: str = "python3") -> list[str]:
     # This literal hash is retained in the preparation-time prompt, outside the
     # writable fixture. Execute the SAME bytes we hashed, never reopen as code.
     launcher = ("import hashlib,json,pathlib,stat,sys; "
@@ -70,7 +86,11 @@ def _preflight_command(root: Path, helper_sha: str) -> str:
     # Standard Base64 has no underscores for Desktop Markdown escaping to corrupt.
     encoded = base64.b64encode(launcher.encode("utf-8")).decode("ascii")
     wrapper = f'import base64;exec(base64.b64decode("{encoded}"))'
-    return shlex.join(["python3", "-I", "-S", "-c", wrapper, str(root / desktop_preflight.HELPER), helper_sha])
+    return [executable, "-I", "-S", "-c", wrapper, str(root / desktop_preflight.HELPER), helper_sha]
+
+
+def _preflight_command(root: Path, helper_sha: str) -> str:
+    return _serialize_shell_argv(_preflight_argv(root, helper_sha))
 
 
 def _helper_binding(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any]:

@@ -130,6 +130,18 @@ unrelated Codex configuration and **does not globally activate Oh-My-Codex**. Af
 finishes, fully quit/relaunch Codex Desktop, start a NEW thread, select Astra or Sol, and
 explicitly invoke `$oh-my-codex`.
 
+For Windows Desktop build verification, the normal operator flow is:
+
+1. Open PowerShell in the checkout and run `.\install.ps1`.
+2. Fully quit and relaunch Codex Desktop.
+3. Run `.\verify-desktop.ps1` and follow its short two-thread instructions.
+4. Rerun `.\verify-desktop.ps1` when instructed after each thread. The wrapper copies
+   the correct prompt, retains the pending run identity, and invokes final evaluation.
+
+No venv path, pip cache setting, Base64 gate, fixture/evidence path, shell quoting, or
+evaluator command needs to be assembled manually. `-Reset` safely archives only wrapper
+state and preserves the prepared forensic fixture.
+
 Optional bootstrap overrides are available for isolated/test installations:
 
 ```bash
@@ -144,7 +156,7 @@ This also gives Codex itself a simple install procedure: clone
 `https://github.com/joewolly/oh-my-codex`, then run the platform bootstrap script and
 restart Codex Desktop.
 
-### Manual install
+### Advanced/manual installation and troubleshooting
 
 From a checkout with Python 3.11 or newer, macOS and Linux:
 
@@ -181,6 +193,13 @@ py -3.11 -m oh_my_codex doctor
 py -3.11 -m oh_my_codex verify --runtime v2 --timeout 300
 py -3.11 -m oh_my_codex verify-desktop --prepare
 ```
+
+These lower-level commands remain available for development and CI; they are not the
+recommended Windows operator workflow. If Windows marks a downloaded script as blocked,
+unblock only that checkout's scripts (for example,
+`Get-Item .\install.ps1, .\verify-desktop.ps1 | Unblock-File`) or use a process-scoped
+policy for the current PowerShell session.
+Do not make an execution-policy bypass a permanent machine-wide setting.
 
 The console command is equivalent after a manual package installation:
 
@@ -236,10 +255,12 @@ availability, native spawning, Desktop behavior, permissions, or model identity.
 It measures routing, fixture execution, and permissions for that process; it cannot
 establish or override Desktop readiness. No generic model-only role fallback is used.
 
-`verify-desktop --prepare` creates a disposable fixture and two unverified
+`verify-desktop --prepare` (or the recommended Windows `verify-desktop.ps1` wrapper)
+creates a disposable fixture and two unverified
 evidence forms for separate ordinary-control and activated threads (schema 4), plus
 `.omc-probe-preflight.py`, a self-contained standard-library gate. The activated prompt
-runs `python3` with a hash-pinned launcher that checks the helper before execution;
+runs a platform-native command (`python3` through a POSIX shell, or
+`& '...python.exe' ...` through PowerShell) with a hash-pinned launcher that checks the helper before execution;
 no package import, checkout working directory, or `PYTHONPATH` is required. Retain the
 preparation-time prompt/hash outside the mutable fixture. Gate failure stops delegation;
 never install packages or substitute a different gate inside the smoke thread. See the

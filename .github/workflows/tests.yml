@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ['3.11', '3.12']
+        python: ['3.11', '3.12', '3.13']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -37,3 +37,14 @@ jobs:
           bash install.sh --venv-dir "$VENV_DIR" --codex-home "$CODEX_HOME" --skills-home "$SKILLS_HOME"
           "$VENV_DIR/bin/python" -m pip --version
           bash install.sh --venv-dir "$VENV_DIR" --codex-home "$CODEX_HOME" --skills-home "$SKILLS_HOME"
+
+  windows-bootstrap-desktop-wrapper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and exercise Windows Desktop wrapper
+        shell: powershell
+        run: .\tests\windows_verify_desktop.ps1

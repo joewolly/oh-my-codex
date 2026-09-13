@@ -8,7 +8,6 @@ interpreter used for preparation, and makes the generated evidence contract expl
 from __future__ import annotations
 
 import json
-import shlex
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -24,7 +23,6 @@ _asset_paths = _core._asset_paths
 _original_asset_fingerprints = _core._asset_fingerprints
 _original_helper_binding = _core._helper_binding
 _original_installed_contracts = _core._installed_contracts
-_original_preflight_command = _core._preflight_command
 _original_desktop_prompt = _core._desktop_prompt
 _original_evaluate_desktop_evidence = _core.evaluate_desktop_evidence
 
@@ -37,9 +35,9 @@ def _asset_fingerprints(codex_home: Path | None = None, skills_home: Path | None
 
 def _preflight_command(root: Path, helper_sha: str) -> str:
     """Bind the gate to the preparation interpreter instead of ambient PATH."""
-    args = shlex.split(_original_preflight_command(root, helper_sha))
-    args[0] = str(Path(sys.executable).expanduser().absolute())
-    return shlex.join(args)
+    executable = str(Path(sys.executable).expanduser().absolute())
+    args = _core._preflight_argv(root, helper_sha, executable=executable)
+    return _core._serialize_shell_argv(args)
 
 
 def _desktop_prompt(root: Path, evidence_path: Path, helper_sha: str | None = None) -> str:

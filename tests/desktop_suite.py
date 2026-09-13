@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
+from oh_my_codex import desktop_core
 from oh_my_codex.desktop import contained_target, validate_probe_plan, ROLES, evaluate_desktop_evidence, prepare_desktop_fixture
 
 
@@ -629,8 +630,9 @@ class DesktopVerificationTests(unittest.TestCase):
         self.assertEqual(before, {p.relative_to(fixture): p.read_bytes() for p in fixture.rglob("*") if p.is_file()})
 
     def test_retained_prompt_uses_standard_base64_without_raw_launcher_source(self):
-        _, command = self._retained_prompt_command()
-        wrapper = shlex.split(command)[4]
+        prepared, command = self._retained_prompt_command()
+        wrapper = (desktop_core._preflight_argv(Path(prepared["fixture"]), prepared["preflight_sha256"])[4]
+                   if os.name == "nt" else shlex.split(command)[4])
         match = re.fullmatch(r'import base64;exec\(base64\.b64decode\("([A-Za-z0-9+/=]+)"\)\)', wrapper)
         self.assertIsNotNone(match)
         encoded = match.group(1)
@@ -643,13 +645,16 @@ class DesktopVerificationTests(unittest.TestCase):
             self.assertNotIn(token, command)
 
     def test_retained_prompt_python_payload_survives_underscore_escaping(self):
-        _, command = self._retained_prompt_command()
-        wrapper = shlex.split(command)[4]
+        prepared, command = self._retained_prompt_command()
+        wrapper = (desktop_core._preflight_argv(Path(prepared["fixture"]), prepared["preflight_sha256"])[4]
+                   if os.name == "nt" else shlex.split(command)[4])
         # Model the observed escaping of Python source in the -c payload only.
         # Helper paths are separate data arguments (including an underscore here);
         # this does not claim immunity to arbitrary mutation of paths or prose.
         escaped = wrapper.replace("_", "\\_")
-        transformed = command.replace(shlex.quote(wrapper), shlex.quote(escaped), 1)
+        quoted_wrapper = (desktop_core._powershell_quote(wrapper) if os.name == "nt" else shlex.quote(wrapper))
+        quoted_escaped = (desktop_core._powershell_quote(escaped) if os.name == "nt" else shlex.quote(escaped))
+        transformed = command.replace(quoted_wrapper, quoted_escaped, 1)
         self.assertEqual(transformed, command)
         result = self._run_prompt_command(transformed)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
@@ -663,7 +668,12 @@ class DesktopVerificationTests(unittest.TestCase):
         prepared, command = self._retained_prompt_command()
         digest = prepared["preflight_sha256"]
         wrong = ("0" if digest[0] != "0" else "1") + digest[1:]
-        result = self._run_prompt_command(command.removesuffix(digest) + wrong)
+        if os.name == "nt":
+            changed = command.replace(desktop_core._powershell_quote(digest),
+                                      desktop_core._powershell_quote(wrong), 1)
+        else:
+            changed = command.removesuffix(digest) + wrong
+        result = self._run_prompt_command(changed)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("helper identity mismatch", result.stderr)
         self.assertNotIn("PASS", result.stdout)
@@ -840,7 +850,11 @@ class DesktopVerificationTests(unittest.TestCase):
 
     def test_prompt_digest_placeholder_in_fixture_name_is_literal(self):
         prepared = prepare_desktop_fixture(self.root.parent / "__OMC_PREFLIGHT_SHA256__ fixture's name", codex_home=self.codex, skills_home=self.skills)
-        result = self._run_gate(shlex.split(prepared["preflight_command"]))
+        command = desktop_core._preflight_argv(
+            Path(prepared["fixture"]), prepared["preflight_sha256"],
+            executable=str(Path(sys.executable).expanduser().absolute()),
+        )
+        result = self._run_gate(command)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
     def test_stale_helper_evidence_is_rejected(self):
