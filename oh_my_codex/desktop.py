@@ -15,6 +15,7 @@ from . import desktop_preflight as _preflight
 ROLES = _core.ROLES
 ROLE_CONTRACTS = _core.ROLE_CONTRACTS
 contained_target = _core.contained_target
+_asset_paths = _core._asset_paths
 
 _original_asset_fingerprints = _core._asset_fingerprints
 _original_helper_binding = _core._helper_binding
@@ -42,16 +43,39 @@ def _installed_contracts(codex_home: Path, skills_home: Path) -> tuple[bool, str
     return _original_installed_contracts(codex_home, skills_home)
 
 
-# The core functions resolve these private helpers through their own module globals.
-# Patch those seams once at import so preparation, standalone preflight regeneration,
-# control binding, and final evaluation all use the same ownership model.
-_core._asset_fingerprints = _asset_fingerprints
-_core._helper_binding = _helper_binding
-_core._installed_contracts = _installed_contracts
+def _sync_core() -> None:
+    # Tests and callers may temporarily replace these facade seams. Keep the
+    # implementation module synchronized so those supported seams remain honest.
+    _core._asset_fingerprints = _asset_fingerprints
+    _core._helper_binding = _helper_binding
+    _core._installed_contracts = _installed_contracts
 
-validate_probe_plan = _core.validate_probe_plan
-evaluate_desktop_evidence = _core.evaluate_desktop_evidence
-prepare_desktop_fixture = _core.prepare_desktop_fixture
-run_verify_desktop = _core.run_verify_desktop
+
+def _helper_bytes(root: Path, metadata: Mapping[str, Any], baseline: Mapping[str, Any]) -> bytes:
+    _sync_core()
+    return _core._helper_bytes(root, metadata, baseline)
+
+
+def validate_probe_plan(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    _sync_core()
+    return _core.validate_probe_plan(*args, **kwargs)
+
+
+def evaluate_desktop_evidence(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    _sync_core()
+    return _core.evaluate_desktop_evidence(*args, **kwargs)
+
+
+def prepare_desktop_fixture(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    _sync_core()
+    return _core.prepare_desktop_fixture(*args, **kwargs)
+
+
+def run_verify_desktop(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    _sync_core()
+    return _core.run_verify_desktop(*args, **kwargs)
+
+
+_sync_core()
 
 __all__ = ["evaluate_desktop_evidence", "prepare_desktop_fixture", "run_verify_desktop"]
