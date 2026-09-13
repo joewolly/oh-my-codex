@@ -30,7 +30,9 @@ Use the returned absolute paths. `--fixture-dir` must be empty. Temporary paths 
 spaces are supported, including macOS `/var` aliases, canonicalized to `/private/var`.
 For development, `--codex-home` and `--skills-home` bind isolated test roots. Never
 replace a live installation just to prepare or evaluate a development fixture.
-Regenerate after any package/evaluator, installed asset, or configuration change.
+Regenerate after any package/evaluator or OMC-managed installed-asset change. The
+user-owned `config.toml` may legitimately change after preparation; each gate validates
+its current TOML and OMC-agent compatibility semantically instead of byte-pinning it.
 
 ## A. Ordinary no-skill control
 
@@ -104,8 +106,9 @@ spawning specialists, probe writes or source edits; preserve the exact failure i
 evidence and leave acceptance unverified/failed. Do not improvise an alternate gate,
 run `pip install`, change the Python environment or fall back to a package import.
 A missing `oh_my_codex` Python module is no longer a Desktop runtime requirement.
-The installed skill, policy, agents and configuration provide the live capability;
-the package remains available for preparation, evaluation, Doctor and lifecycle work.
+The installed skill, policy, agents and compatible Codex configuration provide the live
+capability; the package remains available for preparation, evaluation, Doctor and
+lifecycle work.
 
 The helper contains only standard-library validation and preparation data. It embeds
 schema 4 / preflight-contract 1, root and probe-directory identities, canonical paths,
@@ -113,10 +116,12 @@ baseline, build fingerprints, absolute installed paths/hashes and the prompt tem
 Metadata and activated evidence carry the complete helper SHA-256. The prompt template
 contains a digest placeholder resolved after generation, avoiding a circular hash of
 helper and prompt. The pinned helper compares exact metadata/baseline/prompt bytes,
-requires installed skill/policy/four agents/configuration with matching hashes, and
-checks required files and unexpected fixture entries. Package/source fingerprints are
-captured preparation identity, not runtime filesystem dependencies; retrospective
-package tooling still checks them against the current evaluator/build.
+requires installed skill/policy/four agents with matching hashes, and validates the
+user-owned Codex configuration semantically: valid TOML, agent discovery not disabled,
+and no conflicting OMC role declarations. It also checks required fixture files and
+unexpected fixture entries. Package/source fingerprints are captured preparation
+identity, not runtime filesystem dependencies; retrospective package tooling still
+checks them against the current evaluator/build.
 
 The helper is a control file rather than implementation source, but is never excluded
 from integrity checks. The evaluator regenerates its bytes from trusted package code
@@ -139,9 +144,9 @@ Trusted harness logic creates and validates four fixed paths under the fixture's
 root, resolves each candidate, and uses path-component containment (`relative_to`),
 not string prefixes. Absolute outside paths, any `..` component, sibling-prefix tricks,
 symlink/dangling-link/loop escapes, hard-linked targets and invalid parents fail closed.
-The gate also rejects altered manifests/prompts, changed installed hashes and
-observable root/probe-parent replacement. Developer evaluation additionally checks
-current package hashes.
+The gate also rejects altered manifests/prompts, changed OMC-managed installed hashes,
+incompatible current Codex configuration, and observable root/probe-parent replacement.
+Developer evaluation additionally checks current package hashes.
 Preflight cannot prevent a Full Access process from changing paths afterward; keep the
 fixture free of concurrent filesystem mutations. This is not a race-proof write broker
 or a replacement for host sandbox enforcement.
@@ -206,9 +211,10 @@ python3 -m oh_my_codex verify-desktop --evaluate /path/to/desktop-evidence.json 
 
 The evaluator reads the separate `control-evidence.json` from the same prepared fixture.
 Both records must follow preparation, be at most 24 hours old, match this package's
-schema/code/assets/configuration and OS, and match the supplied versions and distinct
-thread IDs. Evaluation does not restamp or rewrite evidence. Historical schemas 2/3
-and old fingerprints must remain historical; do not relabel them as schema 4.
+schema/code/OMC-managed assets and OS, satisfy the current semantic Codex-config checks,
+and match the supplied versions and distinct thread IDs. Evaluation does not restamp or
+rewrite evidence. Historical schemas 2/3 and old fingerprints must remain historical;
+do not relabel them as schema 4.
 
 The intended success on the current host is:
 
