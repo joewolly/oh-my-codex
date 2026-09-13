@@ -22,8 +22,9 @@ class DesktopPreflightRetryContractTests(unittest.TestCase):
 
     def test_canary_paths_are_never_preflight_helper_arguments(self) -> None:
         prompt = self._prompt()
+        expected_helper = str(Path("/fixture") / ".omc-probe-preflight.py")
         self.assertIn("PREFLIGHT COPY-SAFETY CONTRACT", prompt)
-        self.assertIn("/fixture/.omc-probe-preflight.py", prompt)
+        self.assertIn(expected_helper, prompt)
         self.assertIn("MUST NEVER be used\nas the preflight helper argument", prompt)
         self.assertIn("do\nnot substitute a role's canary path into it", prompt)
 
