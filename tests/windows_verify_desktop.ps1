@@ -24,7 +24,7 @@ try {
     & $PowerShellExe -NoProfile -NonInteractive -File (Join-Path $RepoRoot 'install.ps1')
     Assert-True ($LASTEXITCODE -eq 0) 'install.ps1 must succeed without PIP_NO_CACHE_DIR'
     $ToolingPython = Join-Path $env:LOCALAPPDATA 'Oh-My-Codex\venv\Scripts\python.exe'
-    $ToolingVersion = & $ToolingPython -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+    $ToolingVersion = & $ToolingPython -c 'import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))'
     Assert-True ($ToolingVersion -eq $env:OMC_EXPECTED_PYTHON) 'bootstrap must use the setup-python interpreter selected by CI'
 
     $Wrapper = Join-Path $RepoRoot 'verify-desktop.ps1'
