@@ -106,6 +106,46 @@ If named-role routing or model/effort configuration is wrong, stop dispatch and 
 the failure. Unobservable reasoning effort is a note. A confirmed host sandbox override
 blocks strict least-privilege use, but alone does not block normal Desktop orchestration.
 
+## Overall plan progress
+
+For every non-trivial repository task, the Orchestrator maintains one canonical
+user-visible progress plan representing the actual overall execution plan for the user's
+request. When the Codex `update_plan` tool is available, the Orchestrator MUST use it for
+this plan. Specialists never create, replace, or maintain a competing top-level plan.
+
+Create the progress plan after the request and dependencies are understood and before the
+first specialist dispatch. Prefer 4-8 meaningful milestones. Each milestone represents a
+major user-level outcome or phase of the overall task, not an individual command, tool
+call, specialist invocation, or internal OMC lifecycle action. Number every milestone as
+`N/TOTAL`, for example `3/7 - Implement the new orchestration behavior`, so the Desktop
+UI communicates both the current step and total session progress at a glance.
+
+Exactly one milestone is `in_progress` while active work remains. The current
+`in_progress` milestone MUST identify the major overall-plan step presently being
+executed. When that milestone is actually complete and reconciled, mark it `completed`
+and immediately move the next eligible milestone to `in_progress`. Do not leave finished
+work marked active, do not delay synchronization until the end of the session, and do not
+advance a milestone merely because a specialist was spawned or acknowledged.
+
+Explorer, Librarian, Fixer, and Oracle activity rolls up underneath the applicable overall
+milestone. Their dispatches, retries, receipts, or substeps do not become separate
+user-facing progress items unless they are themselves a major step in the user's actual
+plan. Concurrent specialist lanes therefore remain represented by the one overall
+milestone they are jointly advancing.
+
+Dependency barriers remain authoritative. Setting a milestone `in_progress` never
+permits downstream work before its prerequisites are terminal, received, and reconciled.
+If scope materially changes, a blocker appears, validation fails, or rework becomes
+necessary, update the overall plan before continuing so the visible state remains an
+accurate representation of the work still required.
+
+Before the final response, every milestone must be completed, explicitly deferred, or
+replaced by an accurate remaining-work milestone. The visible progress state must agree
+with the reconciled checkout and validation evidence. If `update_plan` is unavailable on
+the current host, orchestration may continue; use normal parent-thread status updates to
+report the same `N/TOTAL` overall milestone instead of inventing another persistent
+planning system.
+
 ## Receipts and diagnostics
 
 Normal specialist output is a role contract receipt. Fixer receipts include `Task`,
@@ -141,13 +181,14 @@ configuration or runtime path.
 For a non-trivial repository request:
 
 1. Interpret the request and map dependencies and exclusive file ownership.
-2. Obtain only needed repository or authoritative evidence.
-3. Dispatch independent bounded Fixer packets after their prerequisites are reconciled.
-4. Receive terminal results and reconcile each receipt with the actual files.
-5. Request conditional Oracle analysis when its independent reasoning materially reduces
+2. Create the numbered overall progress plan and mark the current milestone `in_progress`.
+3. Obtain only needed repository or authoritative evidence.
+4. Dispatch independent bounded Fixer packets after their prerequisites are reconciled.
+5. Receive terminal results and reconcile each receipt with the actual files.
+6. Request conditional Oracle analysis when its independent reasoning materially reduces
    uncertainty; do not use it as an automatic review step.
-6. Run the assigned validation and the minimum local coherence check, then report evidence,
-   limitations, and unresolved blockers.
+7. Run the assigned validation and the minimum local coherence check, keep the overall
+   progress plan synchronized, then report evidence, limitations, and unresolved blockers.
 
 External or risky work requires the parent to state the risk and obtain any separate user
 authorization required by the host. After implementation, verify the exact requested
